@@ -1,0 +1,692 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Jimu - 可视化接口编辑</title>
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="./vendor/element-plus/index.css">
+    <script src="./vendor/vue/vue.global.prod.js"></script>
+    <script src="./vendor/element-plus/index.full.min.js"></script>
+    <script src="./vendor/axios/axios.min.js"></script>
+    <script src="./vendor/monaco/min/vs/loader.js"></script>
+        <link rel="stylesheet" href="./http-jimu/http_jimu.css">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <div class="header">
+            <h2>🧩 HTTP Jimu - 接口配置</h2>
+            <div>
+                <el-button type="success" @click="showPoolManagement()">连接池</el-button>
+                <el-button type="info" @click="showStepLibrary()">积木库</el-button>
+                <el-button type="primary" @click="showEditDialog()">新接口</el-button>
+            </div>
+        </div>
+
+        <el-table :data="configs" style="width: 100%" class="config-card" @row-dblclick="showEditDialog">
+            <el-table-column prop="httpId" label="接口ID" width="150"></el-table-column>
+            <el-table-column prop="name" label="接口名称" width="200"></el-table-column>
+            <el-table-column prop="url" label="请求地址" show-overflow-tooltip></el-table-column>
+            <el-table-column prop="method" label="方法" width="100"></el-table-column>
+            <el-table-column label="定时任务" width="120">
+                <template #default="scope">
+                    <el-tag :type="scope.row.enableJob ? 'success' : 'info'" size="small">
+                        {{ scope.row.enableJob ? '已开启' : '未开启' }}
+                    </el-tag>
+                    <div style="font-size: 10px; color: #909399; margin-top: 5px;">{{ scope.row.cronConfig || '-' }}</div>
+                </template>
+            </el-table-column>
+            <el-table-column label="操作" width="300">
+                <template #default="scope">
+                    <el-button size="small" @click="showEditDialog(scope.row)">编辑</el-button>
+                    <el-button size="small" type="warning" @click="showScheduleDialog(scope.row)">定时</el-button>
+                    <el-button size="small" type="info" @click="showLogDialog(scope.row)">日志</el-button>
+                    <el-button size="small" type="success" @click="showTestDialog(scope.row)">测试</el-button>
+                    <el-button size="small" type="danger" @click="deleteConfig(scope.row)">删除</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+
+        <!-- 连接池弹窗-->
+        <el-dialog v-model="poolDialogVisible" title="连接池" width="80%">
+            <div style="margin-bottom: 15px;">
+                <el-button type="primary" @click="showPoolEdit()">新建连接池</el-button>
+            </div>
+            <el-table :data="poolList" style="width: 100%" border size="small">
+                <el-table-column prop="name" label="名称" width="200"></el-table-column>
+                <el-table-column prop="maxIdleConnections" label="最大空闲连接" width="100"></el-table-column>
+                <el-table-column prop="keepAliveDuration" label="保持连接(ms)" width="120"></el-table-column>
+                <el-table-column prop="connectTimeout" label="连接超时(ms)" width="150"></el-table-column>
+                <el-table-column prop="readTimeout" label="读取超时(ms)" width="150"></el-table-column>
+                <el-table-column prop="writeTimeout" label="写入超时(ms)" width="150"></el-table-column>
+                <el-table-column prop="callTimeout" label="总超时(ms)" width="130"></el-table-column>
+                <el-table-column prop="maxRequests" label="全局并发" width="100"></el-table-column>
+                <el-table-column prop="maxRequestsPerHost" label="单主机并发" width="120"></el-table-column>
+                <el-table-column prop="pingInterval" label="心跳(ms)" width="100"></el-table-column>
+                <el-table-column prop="proxyHost" label="代理" width="200" show-overflow-tooltip>
+                    <template #default="scope">
+                        {{ scope.row.proxyHost ? `${scope.row.proxyType || 'HTTP'}://${scope.row.proxyHost}:${scope.row.proxyPort || ''}` : '-' }}
+                    </template>
+                </el-table-column>
+                <el-table-column prop="dnsOverrides" label="DNS覆盖" width="220" show-overflow-tooltip></el-table-column>
+                <el-table-column label="操作" width="150">
+                    <template #default="scope">
+                        <el-button size="small" @click="showPoolEdit(scope.row)">编辑</el-button>
+                        <el-button size="small" type="danger" @click="deletePool(scope.row)">删除</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <!-- 连接池编辑弹窗-->
+        <el-dialog v-model="poolEditVisible" :title="poolForm.id ? '编辑连接池' : '新连接池'" width="50%">
+            <el-form :model="poolForm" label-width="160px">
+                <el-form-item label="连接池名称">
+                    <el-input v-model="poolForm.name" placeholder="连接池名称（唯一）"></el-input>
+                </el-form-item>
+                <el-form-item label="空闲连接数">
+                    <el-input-number v-model="poolForm.maxIdleConnections" :min="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="保持连接(ms)">
+                    <el-input-number v-model="poolForm.keepAliveDuration" :min="1000" :step="1000"></el-input-number>
+                </el-form-item>
+                <el-form-item label="连接超时(ms)">
+                    <el-input-number v-model="poolForm.connectTimeout" :min="100" :step="100"></el-input-number>
+                </el-form-item>
+                <el-form-item label="读取超时(ms)">
+                    <el-input-number v-model="poolForm.readTimeout" :min="100" :step="100"></el-input-number>
+                </el-form-item>
+                <el-form-item label="写入超时(ms)">
+                    <el-input-number v-model="poolForm.writeTimeout" :min="100" :step="100"></el-input-number>
+                </el-form-item>
+                <el-form-item label="总超时(ms)">
+                    <el-input-number v-model="poolForm.callTimeout" :min="0" :step="100"></el-input-number>
+                </el-form-item>
+                <el-form-item label="全局最大并发">
+                    <el-input-number v-model="poolForm.maxRequests" :min="1" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="单主机最大并发">
+                    <el-input-number v-model="poolForm.maxRequestsPerHost" :min="1" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="心跳间隔(ms)">
+                    <el-input-number v-model="poolForm.pingInterval" :min="0" :step="1000"></el-input-number>
+                </el-form-item>
+                <el-form-item label="连接失败重试">
+                    <el-switch v-model="poolForm.retryOnConnectionFailure"></el-switch>
+                </el-form-item>
+                <el-form-item label="跟随HTTP重定向">
+                    <el-switch v-model="poolForm.followRedirects"></el-switch>
+                </el-form-item>
+                <el-form-item label="跟随SSL重定向">
+                    <el-switch v-model="poolForm.followSslRedirects"></el-switch>
+                </el-form-item>
+                <el-form-item label="DNS覆盖(JSON)">
+                    <el-input
+                        v-model="poolForm.dnsOverrides"
+                        type="textarea"
+                        :rows="2"
+                        placeholder='{"api.example.com":"1.1.1.1"}'>
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="代理主机">
+                    <el-input v-model="poolForm.proxyHost" placeholder="例如 127.0.0.1"></el-input>
+                </el-form-item>
+                <el-form-item label="代理端口">
+                    <el-input-number v-model="poolForm.proxyPort" :min="1" :max="65535" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="代理类型">
+                    <el-select v-model="poolForm.proxyType" style="width: 180px">
+                        <el-option label="HTTP" value="HTTP"></el-option>
+                        <el-option label="SOCKS" value="SOCKS"></el-option>
+                    </el-select>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="poolEditVisible = false">取消</el-button>
+                <el-button type="primary" @click="savePool">保存</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 积木库管理弹窗-->
+        <el-dialog v-model="stepLibraryVisible" title="积木库管理" width="85%" top="3vh">
+            <div style="margin-bottom: 15px;">
+                <el-button type="primary" @click="showStepEditDialog()">新步骤</el-button>
+            </div>
+            <el-table :data="stepLibrary" style="width: 100%" border size="small" @row-dblclick="showStepEditDialog">
+                <el-table-column prop="code" label="编码" width="150"></el-table-column>
+                <el-table-column prop="name" label="名称" width="200"></el-table-column>
+                <el-table-column prop="type" label="类型" width="100"></el-table-column>
+                <el-table-column prop="target" label="作用" width="100">
+                    <template #default="scope">
+                        <el-tag :type="scope.row.target === 'BODY' ? 'info' : 'warning'" size="small">{{ scope.row.target || 'BODY' }}</el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
+                <el-table-column label="操作" width="150">
+                    <template #default="scope">
+                        <el-button size="small" @click="showStepEditDialog(scope.row)">编辑</el-button>
+                        <el-button size="small" type="danger" @click="deleteStep(scope.row)">删除</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <!-- 步骤编辑弹窗 -->
+        <el-dialog v-model="stepEditVisible" :title="stepForm.id ? '编辑步骤' : '新步骤'" width="70%" @opened="handleStepDialogOpened">
+            <el-form :model="stepForm" label-width="100px">
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="编码">
+                            <el-input v-model="stepForm.code" placeholder="唯一编码（例如：sign_md5）"></el-input>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="名称">
+                            <el-input v-model="stepForm.name" placeholder="步骤名称"></el-input>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="类型">
+                            <el-select v-model="stepForm.type" style="width: 100%">
+                                <el-option label="参数排序" value="SORT"></el-option>
+                                <el-option label="签名" value="SIGN"></el-option>
+                                <el-option label="加密" value="ENCRYPT"></el-option>
+                                <el-option label="添加固定参数" value="ADD_FIXED"></el-option>
+                                <el-option label="自定义脚本" value="SCRIPT"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="作用">
+                            <el-select v-model="stepForm.target" style="width: 100%">
+                                <el-option label="请求体（默认）" value="BODY"></el-option>
+                                <el-option label="请求头" value="HEADER"></el-option>
+                                <el-option label="查询参数" value="QUERY"></el-option>
+                                <el-option label="表单数据" value="FORM"></el-option>
+                                <el-option label="响应体" value="RESPONSE_BODY"></el-option>
+                                <el-option label="响应头" value="RESPONSE_HEADER"></el-option>
+                                <el-option label="响应状态" value="RESPONSE_STATUS"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-form-item label="描述">
+                    <el-input type="textarea" v-model="stepForm.description" :rows="2"></el-input>
+                </el-form-item>
+                
+                <!-- Step Specific Config -->
+                <div v-if="stepForm.type === 'SCRIPT'">
+                    <el-form-item label="脚本内">
+                        <div id="step-script-editor" class="script-editor" style="height: 400px;"></div>
+                    </el-form-item>
+                </div>
+                <div v-else>
+                    <el-form-item label="默认配置(JSON)">
+                        <el-input type="textarea" v-model="stepForm.configJson" :rows="4" placeholder='{"key": "value"}'></el-input>
+                    </el-form-item>
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="stepEditVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveStepLibraryItem">保存</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 编辑弹窗 -->
+        <el-dialog v-model="dialogVisible" :title="form.id ? '编辑接口' : '新接口'" width="85%" top="3vh">
+            <el-form :model="form" label-width="100px">
+                <!-- 顶部基本信息 -->
+                <el-row :gutter="20" style="margin-bottom: 20px;">
+                    <el-col :span="4">
+                        <el-select v-model="form.method" @change="handleMethodChange" placeholder="请求方法">
+                            <el-option v-for="m in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']" :key="m" :label="m" :value="m"></el-option>
+                        </el-select>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-input v-model="form.url" placeholder="请输入请求 URL"></el-input>
+                    </el-col>
+                    <el-col :span="4">
+                        <el-input v-model="form.httpId" placeholder="HTTP ID（唯一）"></el-input>
+                    </el-col>
+                    <el-col :span="4">
+                        <el-input v-model="form.name" placeholder="接口名称"></el-input>
+                    </el-col>
+                </el-row>
+
+                <!-- 连接池与超时配置 -->
+                <el-row :gutter="20" style="margin-bottom: 20px; background-color: #f5f7fa; padding: 10px; border-radius: 4px;">
+                    <el-col :span="6">
+                        <el-form-item label="连接池" label-width="60px" style="margin-bottom: 0;">
+                            <el-select v-model="form.poolId" placeholder="请选择连接池" clearable style="width: 100%">
+                                <el-option label="配置 (不使用连接池)" value=""></el-option>
+                                <el-option v-for="pool in poolList" :key="pool.id" :label="pool.name" :value="pool.id"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="18">
+                        <div style="display: flex; gap: 10px;">
+                            <el-input-number v-model="form.connectTimeout" :min="100" :step="1000" placeholder="连接超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>连接</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.readTimeout" :min="100" :step="1000" placeholder="读取超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>读取</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.writeTimeout" :min="100" :step="1000" placeholder="写入超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>写入</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.callTimeout" :min="0" :step="1000" placeholder="总超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>总超时</template>
+                            </el-input-number>
+                            <span class="placeholder-tips" style="line-height: 32px;">(单位: ms)</span>
+                        </div>
+                    </el-col>
+                </el-row>
+                <el-row :gutter="20" style="margin-top: -6px; margin-bottom: 20px; background-color: #f5f7fa; padding: 0 10px 10px 10px; border-radius: 0 0 4px 4px;">
+                    <el-col :span="24">
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <el-select v-model="form.retryOnConnectionFailure" clearable placeholder="连接失败重试" style="width: 160px;">
+                                <el-option :value="true" label="重试: 开启"></el-option>
+                                <el-option :value="false" label="重试: 关闭"></el-option>
+                            </el-select>
+                            <el-select v-model="form.followRedirects" clearable placeholder="HTTP重定向" style="width: 170px;">
+                                <el-option :value="true" label="HTTP重定向: 开启"></el-option>
+                                <el-option :value="false" label="HTTP重定向: 关闭"></el-option>
+                            </el-select>
+                            <el-select v-model="form.followSslRedirects" clearable placeholder="SSL重定向" style="width: 170px;">
+                                <el-option :value="true" label="SSL重定向: 开启"></el-option>
+                                <el-option :value="false" label="SSL重定向: 关闭"></el-option>
+                            </el-select>
+                            <el-select v-model="form.proxyType" clearable placeholder="代理类型" style="width: 150px;">
+                                <el-option value="HTTP" label="代理类型: HTTP"></el-option>
+                                <el-option value="SOCKS" label="代理类型: SOCKS"></el-option>
+                            </el-select>
+                            <el-input v-model="form.proxyHost" placeholder="代理主机" style="width: 170px;"></el-input>
+                            <el-input-number v-model="form.proxyPort" :min="1" :max="65535" :step="1" placeholder="代理端口" controls-position="right" style="width: 160px;"></el-input-number>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            <el-input
+                                v-model="form.dnsOverrides"
+                                placeholder='DNS覆盖(JSON)，如 {"api.example.com":"1.1.1.1"}'
+                                clearable>
+                            </el-input>
+                        </div>
+                        <div class="placeholder-tips" style="margin-top: 6px;">
+                            留空表示继承连接池/默认客户端配置；填写后按接口覆盖。
+                        </div>
+                    </el-col>
+                </el-row>
+
+                <el-tabs v-model="activeTab" type="border-card">
+                    <!-- Postman 风格基配置 -->
+                    <el-tab-pane label="参数" name="params">
+                        <el-table :data="paramList" size="small" border>
+                            <el-table-column label="键" width="220">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.key" placeholder="参数名" @input="ensureEmptyRow(paramList)"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="值">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="参数值"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="80" align="center">
+                                <template #default="scope">
+                                    <el-button v-if="scope.$index < paramList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="paramList.splice(scope.$index, 1)">-</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="请求头" name="headers">
+                        <el-table :data="headerList" size="small" border>
+                            <el-table-column label="键" width="220">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.key" filterable allow-create placeholder="请求头名称" style="width: 100%" @change="ensureEmptyRow(headerList)">
+                                        <el-option v-for="h in commonHeaders" :key="h" :label="h" :value="h"></el-option>
+                                    </el-select>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="值">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="请求头值"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="80" align="center">
+                                <template #default="scope">
+                                    <el-button v-if="scope.$index < headerList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="headerList.splice(scope.$index, 1)">-</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="请求体" name="body">
+                        <div style="margin-bottom: 15px;">
+                            <el-radio-group v-model="form.bodyType" @change="handleBodyTypeChange">
+                                <el-radio label="none">无</el-radio>
+                                <el-radio label="form-data">form-data</el-radio>
+                                <el-radio label="x-www-form-urlencoded">x-www-form-urlencoded</el-radio>
+                                <el-radio label="raw">原始内容</el-radio>
+                            </el-radio-group>
+                            
+                            <el-select v-if="form.bodyType === 'raw'" v-model="form.bodyRawType" size="small" style="margin-left: 20px; width: 120px;" @change="handleRawTypeChange">
+                                <el-option label="文本" value="text"></el-option>
+                                <el-option label="JavaScript脚本" value="javascript"></el-option>
+                                <el-option label="JSON" value="json"></el-option>
+                                <el-option label="HTML" value="html"></el-option>
+                                <el-option label="XML" value="xml"></el-option>
+                            </el-select>
+                        </div>
+
+                        <div v-if="form.bodyType === 'none'" class="placeholder-tips" style="text-align: center; padding: 40px;">
+                            当前请求没有请求体。
+                        </div>
+
+                        <div v-if="form.bodyType === 'form-data' || form.bodyType === 'x-www-form-urlencoded'">
+                            <el-table :data="form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList" size="small" border>
+                                <el-table-column label="键" width="220">
+                                    <template #default="scope">
+                                    <el-input v-model="scope.row.key" placeholder="键" @input="ensureEmptyRow(form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList)"></el-input>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="值">
+                                    <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="值"></el-input>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="操作" width="80" align="center">
+                                    <template #default="scope">
+                                        <el-button v-if="scope.$index < (form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList).length - 1 || scope.row.key || scope.row.value" 
+                                                   type="danger" size="small" circle 
+                                                   @click="(form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList).splice(scope.$index, 1)">-</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </div>
+
+                        <div v-show="form.bodyType === 'raw'">
+                            <div class="placeholder-tips">Raw 请求体内容，支持占位符，例如 ${userId}。</div>
+                            <div id="body-editor" class="body-editor"></div>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- Jimu Steps -->                    <el-tab-pane label="积木步骤" name="steps">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <el-button-group>
+                                <el-button size="small" @click="addStepFromLibrary">从步骤库添加</el-button>
+                            </el-button-group>
+                            <el-dropdown @command="addStep">
+                                <el-button type="primary" size="small">新增自定义步骤</el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="SORT">参数排序 (SORT)</el-dropdown-item>
+                                        <el-dropdown-item command="SIGN">签名 (SIGN)</el-dropdown-item>
+                                        <el-dropdown-item command="ENCRYPT">加密 (ENCRYPT)</el-dropdown-item>
+                                        <el-dropdown-item command="ADD_FIXED">添加固定参数 (ADD_FIXED)</el-dropdown-item>
+                                        <el-dropdown-item command="SCRIPT">自定义脚本 (SCRIPT)</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </div>
+
+                        <div v-for="(step, index) in steps" :key="index" class="step-item">
+                            <div class="step-header">
+                                步骤 {{index + 1}}: {{step.type}} 
+                                <el-tag size="small" style="margin-left: 10px;">{{step.target || 'BODY'}}</el-tag>
+                                <span v-if="step.stepCode" style="margin-left: 10px; color: #409eff;">(引用: {{step.stepCode}})</span>
+                            </div>
+                            <el-switch v-model="step.enableLog" active-text="日志" class="step-log-switch" size="small"></el-switch>
+                            <span class="step-delete" @click="steps.splice(index, 1)">[删除]</span>
+                            
+                            <!-- Target Selector for Custom Steps -->
+                            <el-form-item label="作用对象" label-width="80px" v-if="!step.stepCode" style="margin-bottom: 10px;">
+                                <el-radio-group v-model="step.target" size="small">
+                                    <el-radio-button label="BODY">请求体</el-radio-button>
+                                    <el-radio-button label="HEADER">请求头</el-radio-button>
+                                    <el-radio-button label="QUERY">查询参数</el-radio-button>
+                                    <el-radio-button label="FORM">表单</el-radio-button>
+                                    <el-radio-button label="RESPONSE_BODY">响应体</el-radio-button>
+                                    <el-radio-button label="RESPONSE_HEADER">响应头</el-radio-button>
+                                    <el-radio-button label="RESPONSE_STATUS">响应状态</el-radio-button>
+                                </el-radio-group>
+                            </el-form-item>
+
+                            <div v-if="step.type === 'SIGN'">
+                                <el-form-item label="算法" label-width="80px">
+                                    <el-select v-model="step.config.algorithm">
+                                        <el-option label="MD5" value="MD5"></el-option>
+                                        <el-option label="SHA256" value="SHA256"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="签名字段" label-width="80px">
+                                    <el-input v-model="step.config.targetField" placeholder="签名写入的字段名"></el-input>
+                                </el-form-item>
+                                <el-form-item label="盐值" label-width="80px">
+                                    <el-input v-model="step.config.salt" placeholder="盐值或 ${placeholder}"></el-input>
+                                </el-form-item>
+                            </div>
+                            <div v-if="step.type === 'ENCRYPT'">
+                                <el-form-item label="算法" label-width="80px">
+                                    <el-select v-model="step.config.algorithm">
+                                        <el-option label="HMAC_SHA256" value="HMAC_SHA256"></el-option>
+                                        <el-option label="HMAC_SHA1" value="HMAC_SHA1"></el-option>
+                                        <el-option label="AES_ECB_PKCS5" value="AES_ECB_PKCS5"></el-option>
+                                        <el-option label="AES_CBC_PKCS5" value="AES_CBC_PKCS5"></el-option>
+                                        <el-option label="RSA_ECB_PKCS1" value="RSA_ECB_PKCS1"></el-option>
+                                        <el-option label="RSA_SHA256_SIGN" value="RSA_SHA256_SIGN"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="字段" label-width="80px">
+                                    <el-input v-model="step.config.fields" placeholder="如：field1,field2（留空=整个载荷）"></el-input>
+                                </el-form-item>
+                                <el-form-item label="密钥" label-width="80px" v-if="step.config.algorithm && (step.config.algorithm.startsWith('HMAC') || step.config.algorithm.startsWith('AES'))">
+                                    <el-input v-model="step.config.secret" type="password" show-password placeholder="HMAC/AES 密钥，支持 ${placeholder}"></el-input>
+                                </el-form-item>
+                                <el-form-item label="IV" label-width="80px" v-if="step.config.algorithm === 'AES_CBC_PKCS5'">
+                                    <el-input v-model="step.config.iv" placeholder="16字节 IV，支持 ${placeholder}"></el-input>
+                                </el-form-item>
+                                <el-form-item label="公钥" label-width="80px" v-if="step.config.algorithm === 'RSA_ECB_PKCS1'">
+                                    <el-input type="textarea" :rows="3" v-model="step.config.publicKey" placeholder="-----BEGIN PUBLIC KEY----- ..."></el-input>
+                                </el-form-item>
+                                <el-form-item label="私钥" label-width="80px" v-if="step.config.algorithm === 'RSA_SHA256_SIGN'">
+                                    <el-input type="textarea" :rows="3" v-model="step.config.privateKey" placeholder="-----BEGIN PRIVATE KEY----- ..."></el-input>
+                                </el-form-item>
+                                <el-form-item label="输出编码" label-width="80px">
+                                    <el-select v-model="step.config.outputEncoding">
+                                        <el-option label="BASE64" value="BASE64"></el-option>
+                                        <el-option label="HEX" value="HEX"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="覆盖原字段" label-width="80px">
+                                    <el-switch v-model="step.config.overwrite"></el-switch>
+                                </el-form-item>
+                                <el-form-item label="目标字段" label-width="80px" v-if="step.config.overwrite === false">
+                                    <el-input v-model="step.config.targetField" placeholder="可选：输出字段名前缀"></el-input>
+                                </el-form-item>
+                            </div>
+                            <div v-if="step.type === 'ADD_FIXED'">
+                                <el-input type="textarea" v-model="step.config_json" :rows="2" placeholder='{"appId": "123"}' @blur="syncStepJson(step)"></el-input>
+                            </div>
+                            <div v-if="step.type === 'SORT'">
+                                <p style="font-size: 12px; color: #909399;">按键名进行字典序排序。</p>
+                            </div>
+                            <div v-show="step.type === 'SCRIPT' && !step.stepCode">
+                                <div class="placeholder-tips">
+                                    可用变量：body（当前请求体）、context（入参上下文）、url（请求地址）、headers（请求头）、queryParams（查询参数）、redis（Redis客户端）、log（日志对象）。<br>
+                                    示例：<code>headers.put("Auth", "123"); queryParams.put("k", "v"); return body;</code>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <el-button size="small" type="primary" plain @click="validateScriptStep(index)">校验语法</el-button>
+                                </div>
+                                <div :id="'editor-' + index" class="script-editor"></div>
+                            </div>
+                            <!-- Library Step Config Override -->
+                            <div v-if="step.stepCode">
+                                <div class="placeholder-tips">覆盖默认配置（JSON）：</div>
+                                <el-input type="textarea" v-model="step.config_json" :rows="2" placeholder='{"overrideKey": "value"}' @blur="syncStepJson(step)"></el-input>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+
+        <!-- Library Selection Dialog -->
+        <el-dialog v-model="librarySelectVisible" title="从步骤库选择" width="60%">
+            <el-table :data="stepLibrary" style="width: 100%" border @row-click="selectLibraryStep" style="cursor: pointer;">
+                <el-table-column prop="code" label="编码" width="150"></el-table-column>
+                <el-table-column prop="name" label="名称" width="200"></el-table-column>
+                <el-table-column prop="type" label="类型" width="100"></el-table-column>
+                <el-table-column prop="target" label="作用对象" width="100"></el-table-column>
+                <el-table-column prop="description" label="描述"></el-table-column>
+            </el-table>
+        </el-dialog>
+                </el-tabs>
+            </el-form>
+            <template #footer>
+                <el-button @click="dialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveConfig">保存配置</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 测试弹窗 -->
+        <el-dialog v-model="testVisible" title="测试调用" width="78%">
+            <el-form label-width="100px">
+                <el-form-item label="输入参数 (JSON)">
+                    <el-input type="textarea" v-model="testParams" :rows="5" placeholder='{"id": 1, "name": "test"}'></el-input>
+                </el-form-item>
+                <div style="display: flex; gap: 8px;">
+                    <el-button @click="runPreview" :loading="testLoading" style="flex: 1;">预览请求</el-button>
+                    <el-button type="primary" @click="runTest" :loading="testLoading" style="flex: 1;">执行调用</el-button>
+                </div>
+                <div v-if="previewDetail" style="margin-top: 15px;">
+                    <div class="debug-block">
+                        <div class="debug-title">预览请求</div>
+                        <div class="debug-meta"><b>{{previewDetail.requestMethod}}</b> {{previewDetail.requestUrl}}</div>
+                        <div class="debug-title">请求头</div>
+                        <pre class="debug-pre">{{ prettyJson(previewDetail.requestHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">请求体</div>
+                        <pre class="debug-pre">{{ previewDetail.requestBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block" v-if="previewDetail.stepTraces && previewDetail.stepTraces.length">
+                        <div class="debug-title">步骤调试</div>
+                        <div class="step-trace" v-for="trace in previewDetail.stepTraces" :key="'preview-' + trace.stepIndex">
+                            <div class="debug-meta">步骤{{trace.stepIndex}} - {{trace.stepType}} ({{trace.target}})</div>
+                            <div class="debug-title">输入</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.inputSnapshot) }}</pre>
+                            <div class="debug-title" style="margin-top: 8px;">输出</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.outputSnapshot) }}</pre>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="testDetail" style="margin-top: 15px;">
+                    <div class="debug-block">
+                        <div class="debug-title">请求信息</div>
+                        <div class="debug-meta"><b>{{testDetail.requestMethod}}</b> {{testDetail.requestUrl}}</div>
+                        <div class="debug-title">请求头</div>
+                        <pre class="debug-pre">{{ prettyJson(testDetail.requestHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">请求体</div>
+                        <pre class="debug-pre">{{ testDetail.requestBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block">
+                        <div class="debug-title">响应信息</div>
+                        <div class="debug-meta">
+                            状态码: <b>{{testDetail.responseStatus}}</b>
+                            <span style="margin-left: 12px;">耗时: <b>{{testDetail.durationMs}} ms</b></span>
+                        </div>
+                        <div class="debug-title">响应头</div>
+                        <pre class="debug-pre">{{ prettyJson(testDetail.responseHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">响应体</div>
+                        <pre class="debug-pre">{{ testDetail.responseBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block" v-if="testDetail.stepTraces && testDetail.stepTraces.length">
+                        <div class="debug-title">步骤调试</div>
+                        <div class="step-trace" v-for="trace in testDetail.stepTraces" :key="'exec-' + trace.stepIndex">
+                            <div class="debug-meta">步骤{{trace.stepIndex}} - {{trace.stepType}} ({{trace.target}})</div>
+                            <div class="debug-title">输入</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.inputSnapshot) }}</pre>
+                            <div class="debug-title" style="margin-top: 8px;">输出</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.outputSnapshot) }}</pre>
+                        </div>
+                    </div>
+                </div>
+                <div v-else-if="testResult" class="result-panel">
+                    {{testResult}}
+                </div>
+            </el-form>
+        </el-dialog>
+
+        <!-- 定时任务配置弹窗 -->
+        <el-dialog v-model="scheduleVisible" title="定时任务配置" width="600px">
+            <el-form :model="scheduleForm" label-width="100px">
+                <el-form-item label="任务">
+                    <el-switch v-model="scheduleForm.enableJob"></el-switch>
+                </el-form-item>
+                <el-form-item label="Cron 表达式">
+                    <el-input v-model="scheduleForm.cronConfig" placeholder="例如：0 0 1 * * ?"></el-input>
+                </el-form-item>
+                <el-form-item label="选择">
+                    <el-radio-group v-model="quickCron" @change="applyQuickCron" size="small">
+                        <el-radio-button label="0 * * * * ?">每分</el-radio-button>
+                        <el-radio-button label="0 0 * * * ?">每小</el-radio-button>
+                        <el-radio-button label="0 0 1 * * ?">每天1</el-radio-button>
+                        <el-radio-button label="0 0 1 ? * FRI">每周</el-radio-button>
+                        <el-radio-button label="0 0 1 1 * ?">每月</el-radio-button>
+                    </el-radio-group>
+                </el-form-item>
+                <div class="placeholder-tips" style="margin-left: 100px;">
+                    定时任务将以空参数执行固定参数
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="scheduleVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveSchedule">保存配置</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 任务日志弹窗 -->
+        <el-dialog v-model="logVisible" :title="'执行日志 - ' + currentConfigName" width="80%">
+            <el-table :data="jobLogs" size="small" border height="500px">
+                <el-table-column prop="createTime" label="执行时间" width="160"></el-table-column>
+                <el-table-column prop="status" label="状态" width="100">
+                    <template #default="scope">
+                        <el-tag :type="scope.row.status === 'SUCCESS' ? 'success' : 'danger'" size="small">
+                            {{scope.row.status}}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="duration" label="耗时(ms)" width="100"></el-table-column>
+                <el-table-column prop="outputResult" label="返回结果" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="errorMsg" label="错误信息" show-overflow-tooltip></el-table-column>
+                <el-table-column label="操作" width="80">
+                    <template #default="scope">
+                        <el-button type="text" size="small" @click="viewLogDetail(scope.row)">详情</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <!-- 日志详情 -->
+        <el-dialog v-model="logDetailVisible" title="日志详情" width="60%">
+            <el-descriptions :column="1" border>
+                <el-descriptions-item label="状态">{{currentLog.status}}</el-descriptions-item>
+                <el-descriptions-item label="耗时">{{currentLog.duration}} ms</el-descriptions-item>
+                <el-descriptions-item label="执行时间">{{currentLog.createTime}}</el-descriptions-item>
+                <el-descriptions-item label="入参">{{currentLog.inputParams}}</el-descriptions-item>
+                <el-descriptions-item label="返回结果">
+                    <pre style="white-space: pre-wrap; word-break: break-all;">{{currentLog.outputResult}}</pre>
+                </el-descriptions-item>
+                <el-descriptions-item v-if="currentLog.errorMsg" label="错误信息">
+                    <span style="color: #f56c6c;">{{currentLog.errorMsg}}</span>
+                </el-descriptions-item>
+            </el-descriptions>
+        </el-dialog>
+    </div>
+
+    <script src="./http-jimu/http_jimu.core.js"></script>
+    <script src="./http-jimu/http_jimu.app.js"></script>
+</body>
+</html>
+
+
+
+

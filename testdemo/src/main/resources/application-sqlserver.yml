@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:sqlserver://192.168.230.6;databaseName=auth_db;trustServerCertificate=true
+    username: sa
+    password: 123qwe,.yh
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  sql:
+    init:
+      mode: always
+      separator: GO
+      schema-locations: classpath:sql/schema-sqlserver.sql
+

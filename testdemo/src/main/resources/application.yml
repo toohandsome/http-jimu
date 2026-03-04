@@ -1,0 +1,19 @@
+server:
+  port: 8081
+  servlet:
+    context-path: /testdemo
+
+spring:
+  application:
+    name: testdemo
+  profiles:
+    active: sqlserver
+
+# MyBatis-Plus configuration
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted # if applicable
+
