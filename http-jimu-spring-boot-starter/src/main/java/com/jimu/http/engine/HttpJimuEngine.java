@@ -172,31 +172,18 @@ public class HttpJimuEngine {
             };
 
             String inputSnapshot = (includeStepTraces || step.isEnableLog()) ? stringifyBody(inputTarget) : null;
-            Object outputTarget = inputTarget;
+            StepContext stepContext = StepContext.builder()
+                    .context(context)
+                    .url(finalUrl)
+                    .headers(headers)
+                    .queryParams(queryParams)
+                    .build();
+            // FIX (Issue 4): unified invocation via shared helper
+            Object outputTarget = invokeStep(step, inputTarget, stepConfig, stepContext,
+                    includeStepTraces, "REQUEST", stepIndex, traces);
 
-            StepType stepType = StepType.fromCode(step.getType());
-            StepProcessor processor = processorMap.get(stepType);
-            if (processor != null) {
-                StepContext stepContext = StepContext.builder()
-                        .context(context)
-                        .url(finalUrl)
-                        .headers(headers)
-                        .queryParams(queryParams)
-                        .build();
-                outputTarget = processor.process(inputTarget, stepConfig, stepContext);
-            } else {
-                log.warn("Unknown step type: {}", step.getType());
-            }
-
-            if (includeStepTraces) {
-                StepTrace trace = new StepTrace();
-                trace.setStepIndex(stepIndex);
-                trace.setPhase("REQUEST");
-                trace.setStepType(step.getType());
-                trace.setTarget(step.getTarget());
-                trace.setInputSnapshot(inputSnapshot);
-                trace.setOutputSnapshot(stringifyBody(outputTarget));
-                traces.add(trace);
+            if (step.isEnableLog()) {
+                log.info("Step [{}] ({}) Log - Input: {}, Output: {}", step.getType(), step.getTarget(), inputSnapshot, stringifyBody(outputTarget));
             }
 
             switch (target) {
@@ -221,10 +208,6 @@ public class HttpJimuEngine {
                         body = outputTarget;
                     }
                 }
-            }
-
-            if (step.isEnableLog()) {
-                log.info("Step [{}] ({}) Log - Input: {}, Output: {}", step.getType(), step.getTarget(), inputSnapshot, stringifyBody(outputTarget));
             }
         }
 
@@ -253,6 +236,39 @@ public class HttpJimuEngine {
         } catch (Exception e) {
             return String.valueOf(body);
         }
+    }
+
+    /**
+     * FIX (Issue 4): Shared step-invocation helper to eliminate duplication between
+     * prepareExecution (request phase) and applyResponseSteps (response phase).
+     * Invokes the correct StepProcessor and optionally records a StepTrace.
+     */
+    private Object invokeStep(HttpStep step, Object inputTarget,
+                              Map<String, Object> stepConfig, StepContext stepContext,
+                              boolean recordTrace, String phase, int stepIndex,
+                              List<StepTrace> traces) {
+        String inputSnapshot = recordTrace ? stringifyBody(inputTarget) : null;
+        Object outputTarget = inputTarget;
+
+        StepType stepType = StepType.fromCode(step.getType());
+        StepProcessor processor = processorMap.get(stepType);
+        if (processor != null) {
+            outputTarget = processor.process(inputTarget, stepConfig, stepContext);
+        } else {
+            log.warn("Unknown step type: {} (phase={})", step.getType(), phase);
+        }
+
+        if (recordTrace && traces != null) {
+            StepTrace trace = new StepTrace();
+            trace.setStepIndex(stepIndex);
+            trace.setPhase(phase);
+            trace.setStepType(step.getType());
+            trace.setTarget(step.getTarget());
+            trace.setInputSnapshot(inputSnapshot);
+            trace.setOutputSnapshot(stringifyBody(outputTarget));
+            traces.add(trace);
+        }
+        return outputTarget;
     }
 
     private List<HttpStep> resolveSteps(String stepsConfig) {
@@ -350,20 +366,15 @@ public class HttpJimuEngine {
             Object inputTarget = target == StepTarget.RESPONSE_BODY
                     ? responseBody
                     : target == StepTarget.RESPONSE_HEADER ? responseHeaders : responseStatus;
-            String inputSnapshot = traces != null ? stringifyBody(inputTarget) : null;
-            Object outputTarget = inputTarget;
-
-            StepType stepType = StepType.fromCode(step.getType());
-            StepProcessor processor = processorMap.get(stepType);
-            if (processor != null) {
-                StepContext stepContext = StepContext.builder()
-                        .context(context)
-                        .url(detail.getRequestUrl())
-                        .headers(detail.getRequestHeaders())
-                        .queryParams(new LinkedHashMap<>())
-                        .build();
-                outputTarget = processor.process(inputTarget, stepConfig, stepContext);
-            }
+            StepContext stepContext = StepContext.builder()
+                    .context(context)
+                    .url(detail.getRequestUrl())
+                    .headers(detail.getRequestHeaders())
+                    .queryParams(new LinkedHashMap<>())
+                    .build();
+            // FIX (Issue 4): unified invocation via shared helper
+            Object outputTarget = invokeStep(step, inputTarget, stepConfig, stepContext,
+                    traces != null, "RESPONSE", stepIndex, traces);
 
             if (target == StepTarget.RESPONSE_BODY) {
                 responseBody = outputTarget;
@@ -371,17 +382,6 @@ public class HttpJimuEngine {
                 responseHeaders = ensureStringMap(outputTarget, "RESPONSE_HEADER", stepIndex);
             } else {
                 responseStatus = ensureObjectMap(outputTarget, "RESPONSE_STATUS", stepIndex);
-            }
-
-            if (traces != null) {
-                StepTrace trace = new StepTrace();
-                trace.setStepIndex(stepIndex);
-                trace.setPhase("RESPONSE");
-                trace.setStepType(step.getType());
-                trace.setTarget(step.getTarget());
-                trace.setInputSnapshot(inputSnapshot);
-                trace.setOutputSnapshot(stringifyBody(outputTarget));
-                traces.add(trace);
             }
         }
 
