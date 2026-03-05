@@ -449,7 +449,9 @@ public class HttpJimuTransportSupport {
     }
 
     /**
+     * Reads the response body with a 5MB size limit to prevent OOM from large payloads.
      * Binary content (images/videos/audio/archives) is encoded as Base64 string.
+     * For truly streaming/large responses the caller should handle separately.
      */
     private String handleResponseBody(Response response) {
         if (response.body() == null) {
@@ -457,17 +459,8 @@ public class HttpJimuTransportSupport {
         }
 
         MediaType contentType = response.body().contentType();
-        if (contentType == null) {
-            try {
-                return response.body().string();
-            } catch (IOException e) {
-                log.warn("Failed to read response body: {}", e.getMessage());
-                return "";
-            }
-        }
-
-        String type = contentType.type();
-        String subtype = contentType.subtype().toLowerCase(Locale.ROOT);
+        String type = contentType != null ? contentType.type() : "text";
+        String subtype = contentType != null ? contentType.subtype().toLowerCase(Locale.ROOT) : "plain";
 
         boolean binary = "image".equals(type)
                 || "video".equals(type)
@@ -478,17 +471,33 @@ public class HttpJimuTransportSupport {
                 || subtype.contains("tar")
                 || subtype.contains("gz")));
 
-        if (binary) {
-            try {
-                byte[] bytes = response.body().bytes();
-                return Base64.getEncoder().encodeToString(bytes);
-            } catch (Exception e) {
-                log.warn("Failed to encode binary response as Base64: {}", e.getMessage());
-                return "";
-            }
+        final long MAX_BYTES = 5L * 1024 * 1024; // 5MB guard against OOM
+
+        // Fast path: Content-Length header tells us it's too large
+        long contentLength = response.body().contentLength();
+        if (contentLength > MAX_BYTES) {
+            log.warn("Response body too large (Content-Length={}), skipping body read", contentLength);
+            return "[Response body too large (" + contentLength + " bytes), read skipped]";
         }
+
+        // Buffer up to MAX_BYTES+1 bytes via Okio source; if more exist, bail out
         try {
-            return response.body().string();
+            okio.BufferedSource source = response.body().source();
+            source.request(MAX_BYTES + 1);
+            long buffered = source.getBuffer().size();
+            if (buffered > MAX_BYTES) {
+                log.warn("Response body too large (buffered={} bytes), skipping body read", buffered);
+                return "[Response body too large (>" + MAX_BYTES + " bytes), read skipped]";
+            }
+            byte[] bytes = source.getBuffer().readByteArray();
+            if (binary) {
+                return Base64.getEncoder().encodeToString(bytes);
+            }
+            // Respect charset from Content-Type; fall back to UTF-8
+            java.nio.charset.Charset charset = (contentType != null && contentType.charset() != null)
+                    ? contentType.charset()
+                    : StandardCharsets.UTF_8;
+            return new String(bytes, charset);
         } catch (IOException e) {
             log.warn("Failed to read response body: {}", e.getMessage());
             return "";
