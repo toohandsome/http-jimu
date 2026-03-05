@@ -87,11 +87,42 @@ public class HttpJimuEngine {
             throw new IllegalArgumentException(methodError);
         }
         PreparedExecution prepared = prepareExecution(config, inputParams, true);
-        ExecuteDetail detail = transportSupport.sendRequestWithDetail(
-                config, prepared.getMethod(), prepared.getUrl(), prepared.getHeaders(), prepared.getBody());
+
+        int maxAttempts = (config.getRetryMaxAttempts() != null && config.getRetryMaxAttempts() > 0)
+                ? config.getRetryMaxAttempts() + 1 : 1;
+        Set<Integer> retryStatusCodes = parseRetryStatusCodes(config.getRetryOnHttpStatus());
+
+        ExecuteDetail detail = null;
+        int attempt = 0;
+        while (attempt < maxAttempts) {
+            attempt++;
+            detail = transportSupport.sendRequestWithDetail(
+                    config, prepared.getMethod(), prepared.getUrl(), prepared.getHeaders(), prepared.getBody());
+            if (attempt < maxAttempts && retryStatusCodes.contains(detail.getResponseStatus())) {
+                log.warn("Retrying HTTP call [{}] due to status {}, attempt {}/{}",
+                        config.getHttpId(), detail.getResponseStatus(), attempt, maxAttempts - 1);
+                continue;
+            }
+            break;
+        }
         applyResponseSteps(detail, prepared.getResolvedSteps(), prepared.getContext(), prepared.getStepTraces());
         detail.setStepTraces(prepared.getStepTraces());
         return detail;
+    }
+
+    private Set<Integer> parseRetryStatusCodes(String retryOnHttpStatus) {
+        Set<Integer> codes = new java.util.LinkedHashSet<>();
+        if (retryOnHttpStatus == null || retryOnHttpStatus.isBlank()) {
+            return codes;
+        }
+        for (String s : retryOnHttpStatus.split(",")) {
+            try {
+                codes.add(Integer.parseInt(s.trim()));
+            } catch (NumberFormatException ignore) {
+                log.warn("Invalid retryOnHttpStatus value: {}", s.trim());
+            }
+        }
+        return codes;
     }
 
     public PreviewDetail previewWithSteps(HttpJimuConfig config, Map<String, Object> inputParams) {

@@ -38,4 +38,12 @@ public class HttpJimuConfig {
     private String proxyType; // HTTP, SOCKS
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    /**
+     * Max retry attempts on configurable HTTP error status codes (0 = no retry).
+     */
+    private Integer retryMaxAttempts;
+    /**
+     * Comma-separated HTTP status codes that trigger a retry, e.g. "502,503,504".
+     */
+    private String retryOnHttpStatus;
 }
