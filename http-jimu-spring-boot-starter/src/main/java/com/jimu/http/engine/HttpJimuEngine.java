@@ -430,17 +430,48 @@ public class HttpJimuEngine {
             return parseKvConfig(bodyConfig, context);
         }
 
+        // --- FIX (Issue 3): Safe placeholder resolution in JSON body ---
+        // Instead of raw String.replaceAll on the whole JSON (which breaks format when
+        // values contain quotes, newlines, etc.), we parse to an object tree first,
+        // then resolve placeholders on each leaf String value individually.
+        String trimmed = bodyConfig.trim();
         try {
-            String resolvedBody = expressionResolver.resolve(bodyConfig, context);
-            if (resolvedBody.trim().startsWith("[")) {
-                return JSON.parseArray(resolvedBody);
-            } else if (resolvedBody.trim().startsWith("{")) {
-                return JSON.parseObject(resolvedBody, Map.class);
+            if (trimmed.startsWith("{")) {
+                Map<Object, Object> tree = JSON.parseObject(trimmed, Map.class);
+                return resolveTreePlaceholders(tree, context);
+            } else if (trimmed.startsWith("[")) {
+                JSONArray arr = JSON.parseArray(trimmed);
+                return resolveTreePlaceholders(arr, context);
             }
-            return resolvedBody;
         } catch (Exception e) {
-            return expressionResolver.resolve(bodyConfig, context);
+            log.warn("Failed to parse bodyConfig as JSON, falling back to plain string resolve: {}", e.getMessage());
         }
+        // Plain-text body: safe to resolve as a whole string
+        return expressionResolver.resolve(bodyConfig, context);
+    }
+
+    /**
+     * Recursively walks a JSON tree (Map / List / String) and resolves
+     * ${...} placeholders only on leaf String values, preserving JSON structure.
+     */
+    @SuppressWarnings("unchecked")
+    private Object resolveTreePlaceholders(Object node, Map<String, Object> context) {
+        if (node instanceof Map<?, ?> map) {
+            Map<Object, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                result.put(entry.getKey(), resolveTreePlaceholders(entry.getValue(), context));
+            }
+            return result;
+        } else if (node instanceof List<?> list) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                result.add(resolveTreePlaceholders(item, context));
+            }
+            return result;
+        } else if (node instanceof String s) {
+            return expressionResolver.resolve(s, context);
+        }
+        return node; // Number, Boolean, null – leave as-is
     }
 
     private Map<String, String> parseKvConfig(String configJson, Map<String, Object> context) {
