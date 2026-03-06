@@ -1,54 +1,77 @@
-﻿# HTTP Jimu
+# HTTP Jimu
 
-HTTP Jimu 是一个用于 **可视化编排第三方 HTTP 调用** 的 Spring Boot 组件。
+HTTP Jimu 是一个用于可视化编排第三方 HTTP 调用的 Spring Boot Starter。
 
-它不提供 HTTP 服务端接口，而是让你通过页面像搭积木一样配置调用流程（参数处理、签名、加密、脚本处理、响应处理），然后在代码中通过 `httpId` 直接调用。
+它同时提供：
+
+- 页面端：通过 `/http_jimu.html` 配置 HTTP 接口、步骤库、连接池、定时任务和执行日志
+- 服务端：自动注册 `/http-jimu-api/**` 管理与测试接口
+- 代码端：通过 `httpId` 在业务代码中直接发起调用
+
+适合把签名、加密、参数整理、脚本处理、响应修整这类“变化频繁但结构稳定”的外部接口逻辑从业务代码中抽离出来。
 
 ---
 
-## 核心特性
+## 核心能力
 
-### 1. 可视化编排页面
+### 1. 可视化 HTTP 编排
 
-访问：`/http_jimu.html`
+页面地址：
 
-支持：
+- `/http_jimu.html`
 
-- 接口配置管理（增删改查）
-- Postman 风格请求配置：Method / URL / Params / Headers / Body
+支持能力：
+
+- HTTP 配置管理：增删改查
+- Postman 风格请求配置：`method`、`url`、`queryParams`、`headers`、`body`
 - Body 类型：`raw`、`form-data`、`x-www-form-urlencoded`、`none`
-- 预览调用与测试调用
+- Raw Body 媒体类型：`text`、`javascript`、`json`、`html`、`xml`
+- 请求预览：只执行参数准备和步骤链，不发真实外部请求
+- 测试调用：发真实外部请求并返回完整请求/响应细节
 - 定时任务配置与执行日志
-- 连接池管理（超时、连接复用参数、重试/重定向/并发/心跳参数）
+- 连接池与超时、代理、DNS、并发参数管理
 
-### 2. 积木步骤（流程引擎）
+### 2. 步骤链引擎
 
 内置步骤类型：
 
-- `SORT`：字段排序
-- `SIGN`：签名
-- `ENCRYPT`：加密/签名编排
-- `ADD_FIXED`：注入固定参数
-- `SCRIPT`：自定义脚本处理
+- `SORT`
+- `SIGN`
+- `ENCRYPT`
+- `ADD_FIXED`
+- `SCRIPT`
 
-作用目标：
+步骤目标：
 
-- 请求阶段：`BODY` / `HEADER` / `QUERY` / `FORM`
-- 响应阶段：`RESPONSE_BODY` / `RESPONSE_HEADER` / `RESPONSE_STATUS`
+- 请求阶段：`HEADER`、`BODY`、`QUERY`、`FORM`
+- 响应阶段：`RESPONSE_BODY`、`RESPONSE_HEADER`、`RESPONSE_STATUS`
 
-### 3. 占位符能力
+说明：
+
+- 请求步骤会在真正发请求前执行
+- 响应步骤会在拿到响应后继续加工结果
+- `preview` 只跑请求阶段步骤
+- `test-call` 会返回 `stepTraces`
+
+### 3. 占位符解析
 
 支持占位符：
 
-- `${key}`：从调用入参读取
-- `${env:xxx}`：从 Spring Environment 读取
-- `${redis:xxx}`：从 Redis 读取
+- `${key}`：读取调用入参
+- `${env:xxx}`：读取 Spring `Environment`
+- `${redis:xxx}`：读取 Redis
 
-保存配置时会进行占位符合法性校验。
+占位符校验会在保存配置时执行，能提前挡住：
 
-### 4. 脚本能力（Groovy）
+- 未闭合的 `${...}`
+- 空占位符 `${}`
+- 不受支持的表达式格式
 
-脚本可用变量：
+JSON Body 的占位符替换按叶子字符串递归处理，避免直接对整段 JSON 做字符串替换导致结构损坏。
+
+### 4. 脚本扩展（Groovy）
+
+`SCRIPT` 步骤可用变量：
 
 - `body`
 - `context`
@@ -57,70 +80,189 @@ HTTP Jimu 是一个用于 **可视化编排第三方 HTTP 调用** 的 Spring Bo
 - `queryParams`
 - `log`
 - `redis`
-- `bean`（`bean("orderService")` 获取 Spring Bean）
-- `beans`（按名称访问 Bean）
+- `bean`
+- `beans`
 
-支持 fastjson2 常用提示与调用：
+说明：
 
-- `JSON.parseObject(...)`
-- `JSON.parseArray(...)`
-- `JSON.toJSONString(...)`
-- `JSONObject.of(...)`
-- `JSONArray.of(...)`
+- `bean("orderService")` 可按名称取 Spring Bean
+- `beans.xxxService` 可按名称访问 Bean
+- 脚本类会做进程内缓存，避免重复编译
+- 脚本校验接口只做语法/编译校验，不执行实际逻辑
 
-### 5. 智能提示（Monaco + 元数据）
+### 5. 重试与传输控制
 
-- Monaco 编辑器内置脚本提示
-- 支持动态字段提示（来自当前参数/Header/Body 配置）
-- 支持 Bean 名与 Bean 方法动态提示
+当前支持两层重试能力：
 
-### 6. 缓存策略（自动识别 Redis / 内存）
+- OkHttp 连接级重试：`retryOnConnectionFailure`
+- 业务级 HTTP 状态码重试：`retryMaxAttempts` + `retryOnHttpStatus`
 
-项目内缓存已统一抽象为 `JimuCacheProvider`：
+其中业务级重试规则：
 
-- 有 `StringRedisTemplate`：自动启用 Redis 缓存实现
-- 无 `StringRedisTemplate`：自动回退内存缓存实现
+- `retryMaxAttempts = 0` 或空：不做状态码重试
+- `retryOnHttpStatus` 形如 `502,503,504`
+- 命中配置状态码时，会在相同 prepared request 上重试
 
-当前走统一缓存抽象的场景：
+### 6. 连接池、代理、DNS 与超时
 
-- `httpId -> HttpJimuConfig` 配置缓存
-- `stepsConfig` 解析缓存
-- 脚本元数据 `scriptMeta` / `beanMeta` 缓存
+连接池可配置：
 
-说明：`OkHttpClient` 连接池、脚本编译 Class 缓存、调度执行标记属于进程内对象，不走 Redis。
+- `maxIdleConnections`
+- `keepAliveDuration`
+- `connectTimeout`
+- `readTimeout`
+- `writeTimeout`
+- `callTimeout`
+- `retryOnConnectionFailure`
+- `followRedirects`
+- `followSslRedirects`
+- `maxRequests`
+- `maxRequestsPerHost`
+- `pingInterval`
+- `dnsOverrides`
+- `proxyHost`
+- `proxyPort`
+- `proxyType`
 
-### 7. 多数据库适配（自动识别方言）
+说明：
 
-分页插件基于 JDBC `DatabaseMetaData` 自动识别数据库类型并选择方言，已去除 Starter 对 SQL Server 驱动的强依赖。
+- 可通过 `poolId` 绑定公共连接池
+- 也可以在单个 `HttpJimuConfig` 上覆盖超时、DNS、代理等参数
+- 代理支持 `HTTP` 和 `SOCKS`
+- DNS 覆盖格式：`{"api.example.com":"1.1.1.1"}`
 
-当前内置识别：
+### 7. 响应明细与大响应保护
 
-- SQL Server
-- MySQL
-- MariaDB
-- PostgreSQL
-- Oracle
-- H2
-- SQLite
-- DB2
+`test-call` / `callWithDetail` 返回：
 
-未识别到方言时会回退到 MyBatis-Plus 默认分页拦截器行为（仍可运行）。
+- 请求方法、URL、Header、Body
+- 响应状态码、Header、Body
+- 执行耗时
+- `stepTraces`
 
-### 8. OkHttp 连接池高级参数
+响应体处理规则：
 
-连接池除基础参数外，已支持：
+- 文本按 `Content-Type` 推断字符集，默认 UTF-8
+- 常见二进制响应会转 Base64
+- 单次响应体读取上限为 5MB，超出会返回提示文本，避免 OOM
 
-- `callTimeout`：整次调用总超时（ms）
-- `retryOnConnectionFailure`：连接失败是否自动重试
-- `followRedirects`：是否跟随 HTTP 重定向
-- `followSslRedirects`：是否跟随 HTTPS 重定向
-- `maxRequests`：全局最大并发请求数
-- `maxRequestsPerHost`：单主机最大并发请求数
-- `pingInterval`：HTTP/2 心跳间隔（ms）
+### 8. 缓存与元数据
+
+项目统一通过 `JimuCacheProvider` 做业务缓存。
+
+自动装配规则：
+
+- 存在 `StringRedisTemplate`：默认使用 Redis 缓存
+- 否则：默认使用内存缓存
+
+当前缓存场景：
+
+- `httpId -> HttpJimuConfig`
+- `stepsConfig` 解析结果
+- `scriptMeta`
+- `beanMeta`
+
+说明：
+
+- 内存缓存使用 Caffeine，并保留每条缓存自己的 TTL 语义
+- 连接池对象、Groovy 编译类缓存和调度运行标记属于进程内资源，不走 Redis
+
+### 9. 定时任务与分布式锁
+
+配置项：
+
+- `enableJob`
+- `cronConfig`
+
+启动时会自动扫描已启用任务并注册调度。
+
+锁策略按顺序自动降级：
+
+1. Redis 锁
+2. JDBC ShedLock
+3. 单机内存防重入
+
+说明：
+
+- 有 Redis 时，使用 `SETNX + TTL + Lua` 释放锁
+- 无 Redis 但有 `DataSource` 且存在 ShedLock 依赖时，自动启用 JDBC 锁
+- 两者都没有时，仅保证单 JVM 内不重入
+- 执行日志异步写库，使用受控有界线程池，避免阻塞调度线程
+
+---
+
+## 快速接入
+
+### 1. 引入依赖
+
+```xml
+<dependency>
+    <groupId>com.jimu</groupId>
+    <artifactId>http-jimu-spring-boot-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+业务应用还需要自行引入数据库驱动，例如：
+
+```xml
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+</dependency>
+```
+
+### 2. 准备数据表
+
+当前运行依赖以下表：
+
+- `http_jimu_config`
+- `http_jimu_pool`
+- `http_jimu_step`
+- `http_jimu_job_log`
+- `jimu_shedlock`（仅使用 JDBC 分布式锁时需要）
+
+可参考：
+
+- `testdemo/src/main/resources/schema.sql`
+
+注意：
+
+- 当前代码实体里 `http_jimu_config` 已包含 `retry_max_attempts`、`retry_on_http_status` 两个字段语义
+- 如果你的历史表结构还没有这两个字段，需要自行补齐对应列
+
+### 3. 基础配置
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/demo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+
+jimu:
+  cache:
+    http-id-ttl-ms: 3600000
+    steps-ttl-ms: 1800000
+    script-meta-ttl-ms: 3600000
+    bean-meta-ttl-ms: 600000
+  scheduler:
+    default-lock-ttl-seconds: 120
+    min-lock-ttl-seconds: 30
+    pool-size: 5
+  script:
+    cache-max: 512
+```
+
+访问页面：
+
+- `http://localhost:8080/http_jimu.html`
 
 ---
 
 ## 代码调用
+
+### 1. 直接取响应体
 
 ```java
 @Service
@@ -137,154 +279,133 @@ public class DemoService {
 }
 ```
 
-如需完整请求/响应细节：
+### 2. 获取完整明细
 
 ```java
+Map<String, Object> params = Map.of("orderId", "12345");
 ExecuteDetail detail = httpJimuService.callWithDetail("my_api_id", params);
+```
+
+### 3. 只预览请求构造结果
+
+```java
+PreviewDetail preview = httpJimuService.preview("my_api_id", Map.of("orderId", "12345"));
 ```
 
 ---
 
-## 主要接口（页面侧）
+## 页面接口
 
-- `GET /http-jimu-api/list`：接口配置列表
-- `POST /http-jimu-api/save`：保存接口配置
-- `POST /http-jimu-api/preview-call/{httpId}`：预览执行（不发真实外部请求）
-- `POST /http-jimu-api/test-call/{httpId}`：测试执行（发真实外部请求）
+基础配置：
+
+- `GET /http-jimu-api/list`
+- `POST /http-jimu-api/save`
+- `DELETE /http-jimu-api/delete/{id}`
+- `POST /http-jimu-api/preview-call/{httpId}`
+- `POST /http-jimu-api/test-call/{httpId}`
+
+连接池：
+
+- `GET /http-jimu-api/pools`
+- `POST /http-jimu-api/pools/save`
+- `DELETE /http-jimu-api/pools/delete/{id}`
+
+步骤库：
+
+- `GET /http-jimu-api/steps`
+- `POST /http-jimu-api/steps/save`
+- `DELETE /http-jimu-api/steps/delete/{id}`
 
 脚本元数据：
 
 - `GET /http-jimu-api/script-meta`
 - `GET /http-jimu-api/script-meta/bean/{beanName}`
 - `POST /http-jimu-api/script-meta/cache/evict`
+- `POST /http-jimu-api/validate-script`
 
-脚本校验：
+任务日志：
 
-- `POST /http-jimu-api/validate-script`：仅做 Groovy **语法/编译校验**（`parse`），不会执行脚本逻辑
+- `GET /http-jimu-api/job-logs/{configId}`
+
+---
+
+## 关键对象说明
+
+### `HttpJimuConfig`
+
+核心字段：
+
+- `httpId`：业务调用 ID，代码里按它查配置
+- `url`、`method`
+- `headers`、`queryParams`、`bodyConfig`
+- `bodyType`、`bodyRawType`
+- `stepsConfig`
+- `poolId`
+- `connectTimeout`、`readTimeout`、`writeTimeout`、`callTimeout`
+- `retryOnConnectionFailure`
+- `followRedirects`、`followSslRedirects`
+- `dnsOverrides`
+- `proxyHost`、`proxyPort`、`proxyType`
+- `retryMaxAttempts`
+- `retryOnHttpStatus`
+- `enableJob`、`cronConfig`
+
+### `HttpJimuStep`
+
+步骤库字段：
+
+- `code`
+- `name`
+- `type`
+- `target`
+- `scriptContent`
+- `configJson`
+- `inputSchema`
+- `outputSchema`
+- `description`
+
+### `HttpJimuPool`
+
+连接池模板字段：
+
+- 空闲连接、保活、超时
+- Dispatcher 并发参数
+- 重定向、连接失败重试
+- DNS override
+- 代理配置
+
+---
 
 ## 项目模块
 
-- `http-jimu-spring-boot-starter`：核心功能模块
-- `testdemo`：示例应用
+- `http-jimu-spring-boot-starter`：Starter 与核心实现
+- `testdemo`：演示项目与示例建表脚本
 
 ---
 
 ## 运行要求
 
-- Java 21
+- JDK 21+
 - Spring Boot 3.x
-- JDBC 数据库（按需选择，如 MySQL / PostgreSQL / SQL Server / Oracle）
-- Redis（可选）
+- MyBatis-Plus
+- 数据库
+- Redis 可选
 
-本地 JDK 示例路径：
-
-- `D:/Java/msjdk-21`
-
-构建已启用 Maven Enforcer，要求 JDK 21+。
+构建已通过 Maven Enforcer 强制要求 JDK 21+。
 
 ---
 
-## Redis 可选接入说明
+## 注意事项
 
-无需额外开关，项目自动识别是否存在 `StringRedisTemplate`：
-
-- 配置了 Redis（且容器中有 `StringRedisTemplate` Bean）时，缓存自动走 Redis
-- 未配置 Redis 时，缓存自动走内存
-
-占位符 `${redis:key}` 的行为：
-
-- 配置 Redis：读取真实 Redis 值
-- 未配置 Redis：占位符解析为空字符串，并记录 warn 日志
-
----
-
-## 多数据库接入说明
-
-`http-jimu-spring-boot-starter` 不再内置具体数据库驱动。业务应用需要自行引入目标数据库 JDBC 依赖。
-
-示例（任选其一）：
-
-```xml
-<!-- MySQL -->
-<dependency>
-    <groupId>com.mysql</groupId>
-    <artifactId>mysql-connector-j</artifactId>
-</dependency>
-
-<!-- PostgreSQL -->
-<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-</dependency>
-
-<!-- SQL Server -->
-<dependency>
-    <groupId>com.microsoft.sqlserver</groupId>
-    <artifactId>mssql-jdbc</artifactId>
-</dependency>
-```
-
-然后按对应数据库配置 `spring.datasource.url/username/password/driver-class-name` 即可。
-
-说明：`testdemo` 模块当前仍使用 SQL Server 作为默认演示配置，你可以替换成自己的数据库连接参数与驱动依赖。
-
----
-
-## 定时任务分布式锁（自动降级）
-
-当前定时任务执行顺序为：
-
-1. Redis 锁（优先）
-2. JDBC ShedLock（无 Redis 时）
-3. 单机模式（Redis/JDBC 都不可用时）
-
-说明：
-
-- 多实例且启用 Redis：通过 `SETNX + TTL + Lua` 防止重复执行。
-- 多实例无 Redis 但有 JDBC ShedLock：通过数据库行锁租约防止重复执行。
-- 两者都不可用：仅保留进程内防重入（`AtomicBoolean`），跨实例会重复执行。
-
-### ShedLock 表初始化（必须）
-
-当你希望启用 JDBC ShedLock 时，请先创建表 `jimu_shedlock`。
-
-SQL Server:
-
-```sql
-CREATE TABLE jimu_shedlock (
-  name NVARCHAR(64) NOT NULL PRIMARY KEY,
-  lock_until DATETIME2 NOT NULL,
-  locked_at DATETIME2 NOT NULL,
-  locked_by NVARCHAR(255) NOT NULL
-);
-```
-
-MySQL:
-
-```sql
-CREATE TABLE jimu_shedlock (
-  name VARCHAR(64) NOT NULL PRIMARY KEY,
-  lock_until TIMESTAMP(3) NOT NULL,
-  locked_at TIMESTAMP(3) NOT NULL,
-  locked_by VARCHAR(255) NOT NULL
-);
-```
-
-PostgreSQL:
-
-```sql
-CREATE TABLE jimu_shedlock (
-  name VARCHAR(64) NOT NULL PRIMARY KEY,
-  lock_until TIMESTAMP NOT NULL,
-  locked_at TIMESTAMP NOT NULL,
-  locked_by VARCHAR(255) NOT NULL
-);
-```
+- Starter 自动导入了 Controller、Engine、Scheduler、StepProcessor、Service 等 Bean
+- 若应用未引入 Web 环境，页面与 `/http-jimu-api/**` 自然不会作为 HTTP 服务对外提供，但代码调用能力仍可复用
+- `SCRIPT` 步骤允许访问 Spring Bean，生产环境建议对页面与接口做鉴权，并限制可暴露的 Bean 范围
+- 大响应体会被 5MB 保护截断，不适合拿来处理真正的流式下载场景
 
 ---
 
 ## 安全建议
 
-当前脚本支持 `bean("name")` 访问 Spring Bean。
-
-建议在生产环境增加 Bean 白名单控制，仅开放必要业务 Bean；并为 `/http-jimu-api/**` 增加鉴权与权限控制。
+- 为 `/http-jimu-api/**` 增加登录态与权限控制
+- 对 `bean("...")` / `beans.xxx` 能访问的 Bean 做白名单约束
+- 不要把高敏感密钥直接写死在脚本中，优先放到环境变量或外部密钥系统
