@@ -132,7 +132,7 @@ class HttpJimuSchedulerTest {
         runnableRef.get().run();
 
         ArgumentCaptor<HttpJimuJobLog> logCaptor = ArgumentCaptor.forClass(HttpJimuJobLog.class);
-        verify(jobLogService).save(logCaptor.capture());
+        verify(jobLogService).saveAsync(logCaptor.capture());
         assertEquals("SUCCESS", logCaptor.getValue().getStatus());
         assertEquals("h-4", logCaptor.getValue().getHttpId());
     }
@@ -163,7 +163,7 @@ class HttpJimuSchedulerTest {
         runnableRef.get().run();
 
         ArgumentCaptor<HttpJimuJobLog> logCaptor = ArgumentCaptor.forClass(HttpJimuJobLog.class);
-        verify(jobLogService).save(logCaptor.capture());
+        verify(jobLogService).saveAsync(logCaptor.capture());
         assertEquals("ERROR", logCaptor.getValue().getStatus());
         assertTrue(logCaptor.getValue().getErrorMsg().contains("boom"));
     }

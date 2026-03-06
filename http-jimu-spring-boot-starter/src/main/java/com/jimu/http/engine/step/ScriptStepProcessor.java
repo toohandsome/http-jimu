@@ -45,9 +45,7 @@ public class ScriptStepProcessor implements StepProcessor, InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
-        this.scriptClassCache = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
-                .maximumSize(jimuProperties.getScript().getCacheMax() > 0 ? jimuProperties.getScript().getCacheMax() : 100)
-                .build();
+        initScriptClassCacheIfNeeded();
     }
 
     @Override
@@ -102,14 +100,28 @@ public class ScriptStepProcessor implements StepProcessor, InitializingBean {
     }
 
     private Class<? extends Script> getOrCompileScriptClass(String script) {
+        initScriptClassCacheIfNeeded();
         String key = SecureUtil.sha256(script);
         return scriptClassCache.get(key, k -> {
-            try (GroovyClassLoader loader = new GroovyClassLoader()) {
+            try (GroovyClassLoader loader = new GroovyClassLoader(getClass().getClassLoader())) {
                 return loader.parseClass(script).asSubclass(Script.class);
             } catch (Exception e) {
                 log.error("Failed to compile script", e);
                 throw new RuntimeException("Script compile failed", e);
             }
         });
+    }
+
+    private void initScriptClassCacheIfNeeded() {
+        if (scriptClassCache != null) {
+            return;
+        }
+        synchronized (this) {
+            if (scriptClassCache == null) {
+                scriptClassCache = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                        .maximumSize(jimuProperties.getScript().getCacheMax() > 0 ? jimuProperties.getScript().getCacheMax() : 100)
+                        .build();
+            }
+        }
     }
 }
