@@ -23,11 +23,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.springframework.beans.factory.InitializingBean;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 @EnableConfigurationProperties(JimuProperties.class)
-public class ScriptStepProcessor implements StepProcessor {
+public class ScriptStepProcessor implements StepProcessor, InitializingBean {
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -37,15 +39,16 @@ public class ScriptStepProcessor implements StepProcessor {
 
     private final JimuProperties jimuProperties;
 
-    private final GroovyClassLoader scriptClassLoader = new GroovyClassLoader();
-    private final Map<String, Class<? extends Script>> scriptClassCache = Collections.synchronizedMap(
-            new LinkedHashMap<>(64, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Entry<String, Class<? extends Script>> eldest) {
-                    return size() > jimuProperties.getScript().getCacheMax();
-                }
-            }
-    );
+    // FIX (Issue 7): Prevent Metaspace leak by using Caffeine + creating a new GroovyClassLoader per script
+    // so that when evicted, the ClassLoader and its loaded classes can be GC'd.
+    private com.github.benmanes.caffeine.cache.Cache<String, Class<? extends Script>> scriptClassCache;
+
+    @Override
+    public void afterPropertiesSet() {
+        this.scriptClassCache = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                .maximumSize(jimuProperties.getScript().getCacheMax() > 0 ? jimuProperties.getScript().getCacheMax() : 100)
+                .build();
+    }
 
     @Override
     public StepType getType() {
@@ -100,6 +103,13 @@ public class ScriptStepProcessor implements StepProcessor {
 
     private Class<? extends Script> getOrCompileScriptClass(String script) {
         String key = SecureUtil.sha256(script);
-        return scriptClassCache.computeIfAbsent(key, k -> scriptClassLoader.parseClass(script).asSubclass(Script.class));
+        return scriptClassCache.get(key, k -> {
+            try (GroovyClassLoader loader = new GroovyClassLoader()) {
+                return loader.parseClass(script).asSubclass(Script.class);
+            } catch (Exception e) {
+                log.error("Failed to compile script", e);
+                throw new RuntimeException("Script compile failed", e);
+            }
+        });
     }
 }

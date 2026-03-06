@@ -94,6 +94,12 @@
             <artifactId>fastjson2</artifactId>
             <version>2.0.53</version>
         </dependency>
+        <!-- FIX (Issues 5,6,7,8): Caffeine for bounded, eviction-aware in-process caches -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.1.8</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

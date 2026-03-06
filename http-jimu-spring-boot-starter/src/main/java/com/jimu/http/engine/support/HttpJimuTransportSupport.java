@@ -60,7 +60,12 @@ public class HttpJimuTransportSupport {
     private final HttpJimuPoolService poolService;
 
     private final Map<String, OkHttpClient> clientPools = new ConcurrentHashMap<>();
-    private final Map<String, OkHttpClient> overrideClients = new ConcurrentHashMap<>();
+    // FIX (Issue 5 & 8): Bounded cache for dynamic clients to prevent OOM
+    private final com.github.benmanes.caffeine.cache.Cache<String, OkHttpClient> overrideClients = 
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                    .maximumSize(1000)
+                    .expireAfterAccess(1, TimeUnit.HOURS)
+                    .build();
     private final OkHttpClient defaultClient = new OkHttpClient();
 
     public void evictClientPool(String poolId) {
@@ -270,7 +275,7 @@ public class HttpJimuTransportSupport {
 
         String overrideKey = baseKey + "|" + buildOverrideKey(config);
         OkHttpClient finalBaseClient = baseClient;
-        return overrideClients.computeIfAbsent(overrideKey, k -> applyConfigOverrides(finalBaseClient, config));
+        return overrideClients.get(overrideKey, k -> applyConfigOverrides(finalBaseClient, config));
     }
 
     private String getHeaderIgnoreCase(Map<String, String> headers, String name) {
