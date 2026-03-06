@@ -14,14 +14,48 @@ import java.time.LocalDateTime;
 @Service
 public class HttpJimuJobLogService extends ServiceImpl<HttpJimuJobLogMapper, HttpJimuJobLog> {
 
+    /**
+     * FIX (Issue 9): Async saving to prevent blocking the scheduler thread.
+     */
+    public void saveAsync(HttpJimuJobLog logEntry) {
+        if (logEntry == null) return;
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                this.save(logEntry);
+            } catch (Exception e) {
+                log.error("Failed to async save job log", e);
+            }
+        });
+    }
+
+    /**
+     * FIX (Issue 10): Batch delete to prevent long-range slow queries on large tables.
+     */
     @Scheduled(cron = "0 0 2 * * ?") // Every day at 2:00 AM
     public void cleanOldLogs() {
         log.info("Starting job log cleanup...");
         try {
             LocalDateTime threshold = LocalDateTime.now().minusDays(7);
-            boolean success = this.remove(new LambdaQueryWrapper<HttpJimuJobLog>()
-                    .le(HttpJimuJobLog::getCreateTime, threshold));
-            log.info("Job log cleanup finished. Success: {}", success);
+            int batchSize = 1000;
+            long totalDeleted = 0;
+            while (true) {
+                com.baomidou.mybatisplus.extension.plugins.pagination.Page<HttpJimuJobLog> page =
+                        this.page(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, batchSize, false),
+                                new LambdaQueryWrapper<HttpJimuJobLog>()
+                                        .select(HttpJimuJobLog::getId)
+                                        .le(HttpJimuJobLog::getCreateTime, threshold));
+                java.util.List<HttpJimuJobLog> logs = page.getRecords();
+                if (logs == null || logs.isEmpty()) {
+                    break;
+                }
+                java.util.List<Long> ids = logs.stream().map(HttpJimuJobLog::getId).collect(java.util.stream.Collectors.toList());
+                this.removeByIds(ids);
+                totalDeleted += ids.size();
+                if (ids.size() < batchSize) {
+                    break;
+                }
+            }
+            log.info("Job log cleanup finished. Total deleted: {}", totalDeleted);
         } catch (Exception e) {
             log.error("Job log cleanup failed", e);
         }

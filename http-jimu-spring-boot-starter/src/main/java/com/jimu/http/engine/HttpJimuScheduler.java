@@ -122,7 +122,8 @@ public class HttpJimuScheduler {
         } finally {
             long duration = System.currentTimeMillis() - start;
             try {
-                jobLogService.save(HttpJimuJobLog.builder()
+                // FIX (Issue 9): Use async saving to prevent blocking the scheduler thread and hurting throughput
+                jobLogService.saveAsync(HttpJimuJobLog.builder()
                         .configId(config.getId())
                         .httpId(config.getHttpId())
                         .inputParams("{}")
