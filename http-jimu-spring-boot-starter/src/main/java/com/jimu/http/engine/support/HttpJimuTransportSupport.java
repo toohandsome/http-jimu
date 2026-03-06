@@ -259,9 +259,9 @@ public class HttpJimuTransportSupport {
                         .followRedirects(followRedirects)
                         .followSslRedirects(followSslRedirects)
                         .pingInterval(pingInterval, TimeUnit.MILLISECONDS)
-                        .dns(resolveDns(pool.getDnsOverrides()));
+                        .dns(HttpJimuOkHttpConfigUtil.resolveDns(pool.getDnsOverrides()));
 
-                Proxy proxy = resolveProxy(pool.getProxyType(), pool.getProxyHost(), pool.getProxyPort());
+                Proxy proxy = HttpJimuOkHttpConfigUtil.resolveProxy(pool.getProxyType(), pool.getProxyHost(), pool.getProxyPort());
                 if (proxy != null) {
                     builder.proxy(proxy);
                 }
@@ -355,10 +355,10 @@ public class HttpJimuTransportSupport {
             builder.followSslRedirects(config.getFollowSslRedirects());
         }
         if (StrUtil.isNotBlank(config.getDnsOverrides())) {
-            builder.dns(resolveDns(config.getDnsOverrides()));
+            builder.dns(HttpJimuOkHttpConfigUtil.resolveDns(config.getDnsOverrides()));
         }
         if (StrUtil.isNotBlank(config.getProxyHost())) {
-            Proxy proxy = resolveProxy(config.getProxyType(), config.getProxyHost(), config.getProxyPort());
+            Proxy proxy = HttpJimuOkHttpConfigUtil.resolveProxy(config.getProxyType(), config.getProxyHost(), config.getProxyPort());
             if (proxy != null) {
                 builder.proxy(proxy);
             }
@@ -380,63 +380,7 @@ public class HttpJimuTransportSupport {
                 + config.getProxyPort();
     }
 
-    private Dns resolveDns(String dnsOverridesJson) {
-        if (StrUtil.isBlank(dnsOverridesJson)) {
-            return Dns.SYSTEM;
-        }
-        Map<String, String> dnsOverrides = parseDnsOverrides(dnsOverridesJson);
-        if (dnsOverrides.isEmpty()) {
-            return Dns.SYSTEM;
-        }
-        return hostname -> {
-            String mappedIp = dnsOverrides.get(hostname);
-            if (StrUtil.isBlank(mappedIp)) {
-                return Dns.SYSTEM.lookup(hostname);
-            }
-            List<InetAddress> resolved = new ArrayList<>(1);
-            try {
-                resolved.add(InetAddress.getByName(mappedIp));
-                return resolved;
-            } catch (UnknownHostException e) {
-                log.warn("Invalid DNS override ip: host={}, ip={}, fallback system dns", hostname, mappedIp);
-                return Dns.SYSTEM.lookup(hostname);
-            }
-        };
-    }
 
-    private Map<String, String> parseDnsOverrides(String dnsOverridesJson) {
-        try {
-            Map<?, ?> raw = JSON.parseObject(dnsOverridesJson, Map.class);
-            Map<String, String> result = new LinkedHashMap<>();
-            if (raw == null) {
-                return result;
-            }
-            raw.forEach((k, v) -> {
-                if (k == null || v == null) {
-                    return;
-                }
-                String host = String.valueOf(k).trim();
-                String ip = String.valueOf(v).trim();
-                if (StrUtil.isNotBlank(host) && StrUtil.isNotBlank(ip)) {
-                    result.put(host, ip);
-                }
-            });
-            return result;
-        } catch (Exception e) {
-            log.warn("Invalid dnsOverrides json, fallback system dns: {}", e.getMessage());
-            return new LinkedHashMap<>();
-        }
-    }
-
-    private Proxy resolveProxy(String proxyType, String proxyHost, Integer proxyPort) {
-        if (StrUtil.isBlank(proxyHost) || proxyPort == null || proxyPort <= 0) {
-            return null;
-        }
-        Proxy.Type type = "SOCKS".equalsIgnoreCase(StrUtil.blankToDefault(proxyType, "HTTP"))
-                ? Proxy.Type.SOCKS
-                : Proxy.Type.HTTP;
-        return new Proxy(type, new InetSocketAddress(proxyHost, proxyPort));
-    }
 
     private MediaType resolveRawMediaType(String bodyRawType) {
         if (StrUtil.isBlank(bodyRawType)) {
