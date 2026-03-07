@@ -60,6 +60,7 @@
                 <el-table-column prop="readTimeout" label="读取超时(ms)" width="150"></el-table-column>
                 <el-table-column prop="writeTimeout" label="写入超时(ms)" width="150"></el-table-column>
                 <el-table-column prop="callTimeout" label="总超时(ms)" width="130"></el-table-column>
+                <el-table-column prop="retryMaxAttempts" label="状态码重试" width="110"></el-table-column>
                 <el-table-column prop="maxRequests" label="全局并发" width="100"></el-table-column>
                 <el-table-column prop="maxRequestsPerHost" label="单主机并发" width="120"></el-table-column>
                 <el-table-column prop="pingInterval" label="心跳(ms)" width="100"></el-table-column>
@@ -68,7 +69,6 @@
                         {{ scope.row.proxyHost ? `${scope.row.proxyType || 'HTTP'}://${scope.row.proxyHost}:${scope.row.proxyPort || ''}` : '-' }}
                     </template>
                 </el-table-column>
-                <el-table-column prop="dnsOverrides" label="DNS覆盖" width="220" show-overflow-tooltip></el-table-column>
                 <el-table-column label="操作" width="150">
                     <template #default="scope">
                         <el-button size="small" @click="showPoolEdit(scope.row)">编辑</el-button>
@@ -102,6 +102,12 @@
                 <el-form-item label="总超时(ms)">
                     <el-input-number v-model="poolForm.callTimeout" :min="0" :step="100"></el-input-number>
                 </el-form-item>
+                <el-form-item label="状态码重试次数">
+                    <el-input-number v-model="poolForm.retryMaxAttempts" :min="0" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="重试状态码">
+                    <el-input v-model="poolForm.retryOnHttpStatus" placeholder="例如 502,503,504"></el-input>
+                </el-form-item>
                 <el-form-item label="全局最大并发">
                     <el-input-number v-model="poolForm.maxRequests" :min="1" :step="1"></el-input-number>
                 </el-form-item>
@@ -119,14 +125,6 @@
                 </el-form-item>
                 <el-form-item label="跟随SSL重定向">
                     <el-switch v-model="poolForm.followSslRedirects"></el-switch>
-                </el-form-item>
-                <el-form-item label="DNS覆盖(JSON)">
-                    <el-input
-                        v-model="poolForm.dnsOverrides"
-                        type="textarea"
-                        :rows="2"
-                        placeholder='{"api.example.com":"1.1.1.1"}'>
-                    </el-input>
                 </el-form-item>
                 <el-form-item label="代理主机">
                     <el-input v-model="poolForm.proxyHost" placeholder="例如 127.0.0.1"></el-input>
@@ -266,7 +264,7 @@
                         </el-form-item>
                     </el-col>
                     <el-col :span="18">
-                        <div style="display: flex; gap: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                             <el-input-number v-model="form.connectTimeout" :min="100" :step="1000" placeholder="连接超时(ms)" controls-position="right" style="width: 160px;">
                                 <template #prefix>连接</template>
                             </el-input-number>
@@ -279,41 +277,8 @@
                             <el-input-number v-model="form.callTimeout" :min="0" :step="1000" placeholder="总超时(ms)" controls-position="right" style="width: 160px;">
                                 <template #prefix>总超时</template>
                             </el-input-number>
+                            <el-button plain @click="showAdvancedConfigDialog">更多配置</el-button>
                             <span class="placeholder-tips" style="line-height: 32px;">(单位: ms)</span>
-                        </div>
-                    </el-col>
-                </el-row>
-                <el-row :gutter="20" style="margin-top: -6px; margin-bottom: 20px; background-color: #f5f7fa; padding: 0 10px 10px 10px; border-radius: 0 0 4px 4px;">
-                    <el-col :span="24">
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <el-select v-model="form.retryOnConnectionFailure" clearable placeholder="连接失败重试" style="width: 160px;">
-                                <el-option :value="true" label="重试: 开启"></el-option>
-                                <el-option :value="false" label="重试: 关闭"></el-option>
-                            </el-select>
-                            <el-select v-model="form.followRedirects" clearable placeholder="HTTP重定向" style="width: 170px;">
-                                <el-option :value="true" label="HTTP重定向: 开启"></el-option>
-                                <el-option :value="false" label="HTTP重定向: 关闭"></el-option>
-                            </el-select>
-                            <el-select v-model="form.followSslRedirects" clearable placeholder="SSL重定向" style="width: 170px;">
-                                <el-option :value="true" label="SSL重定向: 开启"></el-option>
-                                <el-option :value="false" label="SSL重定向: 关闭"></el-option>
-                            </el-select>
-                            <el-select v-model="form.proxyType" clearable placeholder="代理类型" style="width: 150px;">
-                                <el-option value="HTTP" label="代理类型: HTTP"></el-option>
-                                <el-option value="SOCKS" label="代理类型: SOCKS"></el-option>
-                            </el-select>
-                            <el-input v-model="form.proxyHost" placeholder="代理主机" style="width: 170px;"></el-input>
-                            <el-input-number v-model="form.proxyPort" :min="1" :max="65535" :step="1" placeholder="代理端口" controls-position="right" style="width: 160px;"></el-input-number>
-                        </div>
-                        <div style="margin-top: 8px;">
-                            <el-input
-                                v-model="form.dnsOverrides"
-                                placeholder='DNS覆盖(JSON)，如 {"api.example.com":"1.1.1.1"}'
-                                clearable>
-                            </el-input>
-                        </div>
-                        <div class="placeholder-tips" style="margin-top: 6px;">
-                            留空表示继承连接池/默认客户端配置；填写后按接口覆盖。
                         </div>
                     </el-col>
                 </el-row>
@@ -529,10 +494,17 @@
                             </div>
                         </div>
                     </el-tab-pane>
+                </el-tabs>
+            </el-form>
+            <template #footer>
+                <el-button @click="dialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveConfig">保存配置</el-button>
+            </template>
+        </el-dialog>
 
         <!-- Library Selection Dialog -->
         <el-dialog v-model="librarySelectVisible" title="从步骤库选择" width="60%">
-            <el-table :data="stepLibrary" style="width: 100%" border @row-click="selectLibraryStep" style="cursor: pointer;">
+            <el-table :data="stepLibrary" style="width: 100%; cursor: pointer;" border @row-click="selectLibraryStep">
                 <el-table-column prop="code" label="编码" width="150"></el-table-column>
                 <el-table-column prop="name" label="名称" width="200"></el-table-column>
                 <el-table-column prop="type" label="类型" width="100"></el-table-column>
@@ -540,11 +512,51 @@
                 <el-table-column prop="description" label="描述"></el-table-column>
             </el-table>
         </el-dialog>
-                </el-tabs>
+
+        <el-dialog v-model="advancedConfigVisible" title="更多配置" width="620px">
+            <el-form :model="form" label-width="140px">
+                <el-form-item label="连接失败重试">
+                    <el-select v-model="form.retryOnConnectionFailure" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="HTTP重定向">
+                    <el-select v-model="form.followRedirects" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="SSL重定向">
+                    <el-select v-model="form.followSslRedirects" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="状态码重试次数">
+                    <el-input-number v-model="form.retryMaxAttempts" :min="0" :step="1" style="width: 220px;"></el-input-number>
+                </el-form-item>
+                <el-form-item label="重试状态码">
+                    <el-input v-model="form.retryOnHttpStatus" placeholder="例如 502,503,504"></el-input>
+                </el-form-item>
+                <el-form-item label="代理类型">
+                    <el-select v-model="form.proxyType" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option value="HTTP" label="HTTP"></el-option>
+                        <el-option value="SOCKS" label="SOCKS"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="代理主机">
+                    <el-input v-model="form.proxyHost" placeholder="例如 127.0.0.1"></el-input>
+                </el-form-item>
+                <el-form-item label="代理端口">
+                    <el-input-number v-model="form.proxyPort" :min="1" :max="65535" :step="1" style="width: 220px;"></el-input-number>
+                </el-form-item>
+                <div class="placeholder-tips">
+                    留空表示继承连接池或默认客户端配置。
+                </div>
             </el-form>
             <template #footer>
-                <el-button @click="dialogVisible = false">取消</el-button>
-                <el-button type="primary" @click="saveConfig">保存配置</el-button>
+                <el-button @click="advancedConfigVisible = false">关闭</el-button>
             </template>
         </el-dialog>
 

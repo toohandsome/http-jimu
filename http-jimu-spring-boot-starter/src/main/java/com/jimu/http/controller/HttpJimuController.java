@@ -59,15 +59,21 @@ public class HttpJimuController {
 
     @PostMapping("/pools/save")
     public Result<Boolean> savePool(@RequestBody HttpJimuPool pool) {
-        if (pool.getId() == null) {
-            pool.setCreateTime(LocalDateTime.now());
+        try {
+            if (pool.getId() == null) {
+                pool.setCreateTime(LocalDateTime.now());
+            }
+            pool.setUpdateTime(LocalDateTime.now());
+            boolean success = poolService.saveOrUpdate(pool);
+            if (success && pool.getId() != null) {
+                engine.evictClientPool(pool.getId());
+            }
+            return Result.success(success);
+        } catch (IllegalArgumentException e) {
+            return Result.error(safeErrorMessage(e, "Save pool failed"));
+        } catch (Exception e) {
+            return Result.error(safeErrorMessage(e, "Save pool failed"));
         }
-        pool.setUpdateTime(LocalDateTime.now());
-        boolean success = poolService.saveOrUpdate(pool);
-        if (success && pool.getId() != null) {
-            engine.evictClientPool(pool.getId());
-        }
-        return Result.success(success);
     }
 
     @DeleteMapping("/pools/delete/{id}")
@@ -86,15 +92,21 @@ public class HttpJimuController {
 
     @PostMapping("/steps/save")
     public Result<Boolean> saveStep(@RequestBody HttpJimuStep step) {
-        if (step.getId() == null) {
-            step.setCreateTime(LocalDateTime.now());
+        try {
+            if (step.getId() == null) {
+                step.setCreateTime(LocalDateTime.now());
+            }
+            step.setUpdateTime(LocalDateTime.now());
+            boolean success = stepService.saveOrUpdate(step);
+            if (success) {
+                engine.evictStepsCache();
+            }
+            return Result.success(success);
+        } catch (IllegalArgumentException e) {
+            return Result.error(safeErrorMessage(e, "Save step failed"));
+        } catch (Exception e) {
+            return Result.error(safeErrorMessage(e, "Save step failed"));
         }
-        step.setUpdateTime(LocalDateTime.now());
-        boolean success = stepService.saveOrUpdate(step);
-        if (success) {
-            engine.evictStepsCache();
-        }
-        return Result.success(success);
     }
 
     @DeleteMapping("/steps/delete/{id}")
@@ -141,26 +153,32 @@ public class HttpJimuController {
 
     @PostMapping("/save")
     public Result<Boolean> save(@RequestBody HttpJimuConfig config) {
-        String cronError = HttpJimuConfigSupport.validateCronConfig(config);
-        if (cronError != null) {
-            return Result.error(cronError);
+        try {
+            String cronError = HttpJimuConfigSupport.validateCronConfig(config);
+            if (cronError != null) {
+                return Result.error(cronError);
+            }
+            String methodError = HttpJimuConfigSupport.validateAndNormalizeMethod(config);
+            if (methodError != null) {
+                return Result.error(methodError);
+            }
+            String placeholderError = validateConfigPlaceholders(config);
+            if (placeholderError != null) {
+                return Result.error(placeholderError);
+            }
+            if (config.getCronConfig() != null) {
+                config.setCronConfig(config.getCronConfig().trim());
+            }
+            if (config.getId() == null) {
+                config.setCreateTime(LocalDateTime.now());
+            }
+            config.setUpdateTime(LocalDateTime.now());
+            return Result.success(httpJimuService.saveOrUpdate(config));
+        } catch (IllegalArgumentException e) {
+            return Result.error(safeErrorMessage(e, "Save config failed"));
+        } catch (Exception e) {
+            return Result.error(safeErrorMessage(e, "Save config failed"));
         }
-        String methodError = HttpJimuConfigSupport.validateAndNormalizeMethod(config);
-        if (methodError != null) {
-            return Result.error(methodError);
-        }
-        String placeholderError = validateConfigPlaceholders(config);
-        if (placeholderError != null) {
-            return Result.error(placeholderError);
-        }
-        if (config.getCronConfig() != null) {
-            config.setCronConfig(config.getCronConfig().trim());
-        }
-        if (config.getId() == null) {
-            config.setCreateTime(LocalDateTime.now());
-        }
-        config.setUpdateTime(LocalDateTime.now());
-        return Result.success(httpJimuService.saveOrUpdate(config));
     }
 
     @PostMapping("/preview-call/{httpId}")

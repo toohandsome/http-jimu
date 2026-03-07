@@ -66,6 +66,16 @@ public class HttpJimuPool implements Serializable {
     private Boolean followSslRedirects;
 
     /**
+     * Business-level retry attempts on configured HTTP status codes.
+     */
+    private Integer retryMaxAttempts;
+
+    /**
+     * Comma-separated HTTP status codes that trigger a business retry.
+     */
+    private String retryOnHttpStatus;
+
+    /**
      * Dispatcher max requests
      */
     private Integer maxRequests;
@@ -79,11 +89,6 @@ public class HttpJimuPool implements Serializable {
      * HTTP/2 ping interval in milliseconds
      */
     private Integer pingInterval;
-
-    /**
-     * DNS override JSON, e.g. {"api.example.com":"1.1.1.1"}
-     */
-    private String dnsOverrides;
 
     /**
      * Proxy host

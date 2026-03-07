@@ -4,6 +4,8 @@ import cn.hutool.core.util.CharsetUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson2.JSON;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.jimu.http.engine.model.ExecuteDetail;
 import com.jimu.http.entity.HttpJimuConfig;
 import com.jimu.http.entity.HttpJimuPool;
@@ -13,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.ConnectionPool;
 import okhttp3.Dispatcher;
-import okhttp3.Dns;
 import okhttp3.FormBody;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -24,15 +25,12 @@ import okhttp3.Response;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,8 +59,8 @@ public class HttpJimuTransportSupport {
 
     private final Map<String, OkHttpClient> clientPools = new ConcurrentHashMap<>();
     // FIX (Issue 5 & 8): Bounded cache for dynamic clients to prevent OOM
-    private final com.github.benmanes.caffeine.cache.Cache<String, OkHttpClient> overrideClients = 
-            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+    private final Cache<String, OkHttpClient> overrideClients =
+            Caffeine.newBuilder()
                     .maximumSize(1000)
                     .expireAfterAccess(1, TimeUnit.HOURS)
                     .build();
@@ -258,10 +256,9 @@ public class HttpJimuTransportSupport {
                         .retryOnConnectionFailure(retryOnConnectionFailure)
                         .followRedirects(followRedirects)
                         .followSslRedirects(followSslRedirects)
-                        .pingInterval(pingInterval, TimeUnit.MILLISECONDS)
-                        .dns(HttpJimuOkHttpConfigUtil.resolveDns(pool.getDnsOverrides()));
+                        .pingInterval(pingInterval, TimeUnit.MILLISECONDS);
 
-                Proxy proxy = HttpJimuOkHttpConfigUtil.resolveProxy(pool.getProxyType(), pool.getProxyHost(), pool.getProxyPort());
+                Proxy proxy = resolveProxy(pool.getProxyType(), pool.getProxyHost(), pool.getProxyPort());
                 if (proxy != null) {
                     builder.proxy(proxy);
                 }
@@ -327,7 +324,6 @@ public class HttpJimuTransportSupport {
                 || config.getRetryOnConnectionFailure() != null
                 || config.getFollowRedirects() != null
                 || config.getFollowSslRedirects() != null
-                || StrUtil.isNotBlank(config.getDnsOverrides())
                 || StrUtil.isNotBlank(config.getProxyHost());
     }
 
@@ -354,11 +350,8 @@ public class HttpJimuTransportSupport {
         if (config.getFollowSslRedirects() != null) {
             builder.followSslRedirects(config.getFollowSslRedirects());
         }
-        if (StrUtil.isNotBlank(config.getDnsOverrides())) {
-            builder.dns(HttpJimuOkHttpConfigUtil.resolveDns(config.getDnsOverrides()));
-        }
         if (StrUtil.isNotBlank(config.getProxyHost())) {
-            Proxy proxy = HttpJimuOkHttpConfigUtil.resolveProxy(config.getProxyType(), config.getProxyHost(), config.getProxyPort());
+            Proxy proxy = resolveProxy(config.getProxyType(), config.getProxyHost(), config.getProxyPort());
             if (proxy != null) {
                 builder.proxy(proxy);
             }
@@ -374,10 +367,17 @@ public class HttpJimuTransportSupport {
                 + config.getRetryOnConnectionFailure() + "|"
                 + config.getFollowRedirects() + "|"
                 + config.getFollowSslRedirects() + "|"
-                + config.getDnsOverrides() + "|"
                 + config.getProxyType() + "|"
                 + config.getProxyHost() + "|"
                 + config.getProxyPort();
+    }
+
+    private Proxy resolveProxy(String proxyType, String proxyHost, Integer proxyPort) {
+        if (StrUtil.isBlank(proxyHost) || proxyPort == null) {
+            return null;
+        }
+        Proxy.Type type = "SOCKS".equalsIgnoreCase(proxyType) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        return new Proxy(type, new InetSocketAddress(proxyHost.trim(), proxyPort));
     }
 
 

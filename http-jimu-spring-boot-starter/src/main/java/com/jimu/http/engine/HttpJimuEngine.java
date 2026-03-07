@@ -19,10 +19,12 @@ import com.jimu.http.engine.step.StepProcessor;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
 import com.jimu.http.engine.support.JimuExpressionResolver;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
 import com.jimu.http.model.HttpStep;
 import com.jimu.http.model.enums.StepTarget;
 import com.jimu.http.model.enums.StepType;
+import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuStepService;
 import com.jimu.http.support.HttpJimuConfigSupport;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +59,9 @@ public class HttpJimuEngine {
     @Autowired
     private HttpJimuTransportSupport transportSupport;
 
+    @Autowired(required = false)
+    private HttpJimuPoolService poolService;
+
     private final JimuProperties jimuProperties;
 
     private final Map<StepType, StepProcessor> processorMap = new EnumMap<>(StepType.class);
@@ -88,9 +93,10 @@ public class HttpJimuEngine {
         }
         PreparedExecution prepared = prepareExecution(config, inputParams, true);
 
-        int maxAttempts = (config.getRetryMaxAttempts() != null && config.getRetryMaxAttempts() > 0)
-                ? config.getRetryMaxAttempts() + 1 : 1;
-        Set<Integer> retryStatusCodes = parseRetryStatusCodes(config.getRetryOnHttpStatus());
+        int configuredRetryAttempts = resolveRetryMaxAttempts(config);
+        String configuredRetryStatuses = resolveRetryOnHttpStatus(config);
+        int maxAttempts = configuredRetryAttempts > 0 ? configuredRetryAttempts + 1 : 1;
+        Set<Integer> retryStatusCodes = parseRetryStatusCodes(configuredRetryStatuses);
 
         ExecuteDetail detail = null;
         int attempt = 0;
@@ -123,6 +129,29 @@ public class HttpJimuEngine {
             }
         }
         return codes;
+    }
+
+    private int resolveRetryMaxAttempts(HttpJimuConfig config) {
+        if (config.getRetryMaxAttempts() != null) {
+            return config.getRetryMaxAttempts();
+        }
+        HttpJimuPool pool = resolvePool(config);
+        return pool != null && pool.getRetryMaxAttempts() != null ? pool.getRetryMaxAttempts() : 0;
+    }
+
+    private String resolveRetryOnHttpStatus(HttpJimuConfig config) {
+        if (StrUtil.isNotBlank(config.getRetryOnHttpStatus())) {
+            return config.getRetryOnHttpStatus();
+        }
+        HttpJimuPool pool = resolvePool(config);
+        return pool != null ? pool.getRetryOnHttpStatus() : null;
+    }
+
+    private HttpJimuPool resolvePool(HttpJimuConfig config) {
+        if (poolService == null || config == null || StrUtil.isBlank(config.getPoolId())) {
+            return null;
+        }
+        return poolService.getById(config.getPoolId());
     }
 
     public PreviewDetail previewWithSteps(HttpJimuConfig config, Map<String, Object> inputParams) {

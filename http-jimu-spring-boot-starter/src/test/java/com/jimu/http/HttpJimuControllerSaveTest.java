@@ -73,4 +73,25 @@ class HttpJimuControllerSaveTest {
         verify(service).saveOrUpdate(captor.capture());
         assertEquals("0/5 * * * * ?", captor.getValue().getCronConfig());
     }
+
+    @Test
+    void shouldReturnBusinessErrorWhenHttpIdDuplicated() {
+        HttpJimuService service = mock(HttpJimuService.class);
+        when(service.saveOrUpdate(org.mockito.ArgumentMatchers.any(HttpJimuConfig.class)))
+                .thenThrow(new IllegalArgumentException("httpId already exists: demo-api"));
+        HttpJimuController controller = newController(service);
+        HttpJimuConfig config = new HttpJimuConfig();
+        config.setHttpId("demo-api");
+        config.setUrl("https://example.com/api");
+        config.setHeaders("[]");
+        config.setQueryParams("[]");
+        config.setBodyConfig("{}");
+        config.setStepsConfig("[]");
+        config.setParamsConfig("{}");
+
+        Result<Boolean> result = controller.save(config);
+
+        assertEquals(1100, result.getCode());
+        assertEquals("httpId already exists: demo-api", result.getMsg());
+    }
 }

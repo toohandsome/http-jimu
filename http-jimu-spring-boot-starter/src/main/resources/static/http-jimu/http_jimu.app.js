@@ -2,6 +2,7 @@
             setup() {
                 const configs = ref([]);
                 const dialogVisible = ref(false);
+                const advancedConfigVisible = ref(false);
                 const testVisible = ref(false);
                 const testLoading = ref(false);
                 const testResult = ref('');
@@ -68,14 +69,15 @@
                     enableJob: false,
                     stepsConfig: '[]',
                     poolId: '',
-                    connectTimeout: null,
-                    readTimeout: null,
-                    writeTimeout: null,
-                    callTimeout: null,
+                    connectTimeout: 10000,
+                    readTimeout: 10000,
+                    writeTimeout: 10000,
+                    callTimeout: 0,
                     retryOnConnectionFailure: null,
                     followRedirects: null,
                     followSslRedirects: null,
-                    dnsOverrides: '',
+                    retryMaxAttempts: 0,
+                    retryOnHttpStatus: '',
                     proxyHost: '',
                     proxyPort: null,
                     proxyType: 'HTTP'
@@ -97,10 +99,11 @@
                     retryOnConnectionFailure: true,
                     followRedirects: true,
                     followSslRedirects: true,
+                    retryMaxAttempts: 0,
+                    retryOnHttpStatus: '',
                     maxRequests: 64,
                     maxRequestsPerHost: 5,
                     pingInterval: 0,
-                    dnsOverrides: '',
                     proxyHost: '',
                     proxyPort: null,
                     proxyType: 'HTTP'
@@ -135,10 +138,11 @@
                             retryOnConnectionFailure: true,
                             followRedirects: true,
                             followSslRedirects: true,
+                            retryMaxAttempts: 0,
+                            retryOnHttpStatus: '',
                             maxRequests: 64,
                             maxRequestsPerHost: 5,
                             pingInterval: 0,
-                            dnsOverrides: '',
                             proxyHost: '',
                             proxyPort: null,
                             proxyType: 'HTTP'
@@ -152,11 +156,24 @@
                         ElementPlus.ElMessage.error('Pool Name is required');
                         return;
                     }
-                    const res = await axios.post('http-jimu-api/pools/save', poolForm.value);
-                    if (res.data.code === 1000) {
-                        ElementPlus.ElMessage.success('保存成功');
-                        poolEditVisible.value = false;
-                        fetchPools();
+                    poolForm.value.retryOnHttpStatus = (poolForm.value.retryOnHttpStatus || '').trim();
+                    if (!poolForm.value.proxyHost) {
+                        poolForm.value.proxyPort = null;
+                    }
+                    try {
+                        const res = await axios.post('http-jimu-api/pools/save', poolForm.value);
+                        if (res.data.code === 1000) {
+                            ElementPlus.ElMessage.success('保存成功');
+                            poolEditVisible.value = false;
+                            fetchPools();
+                            return;
+                        }
+                        ElementPlus.ElMessage.error(res.data.msg || '保存失败');
+                    } catch (e) {
+                        const msg = e.response && e.response.data && e.response.data.msg
+                            ? e.response.data.msg
+                            : (e.message || '保存失败');
+                        ElementPlus.ElMessage.error(msg);
                     }
                 };
 
@@ -171,6 +188,9 @@
 
                 const applyQuickCron = (val) => {
                     form.value.cronConfig = val;
+                };
+                const showAdvancedConfigDialog = () => {
+                    advancedConfigVisible.value = true;
                 };
                 const steps = ref([]);
                 const editors = {};
@@ -361,7 +381,8 @@
                             retryOnConnectionFailure: row.retryOnConnectionFailure,
                             followRedirects: row.followRedirects,
                             followSslRedirects: row.followSslRedirects,
-                            dnsOverrides: row.dnsOverrides || '',
+                            retryMaxAttempts: row.retryMaxAttempts ?? 0,
+                            retryOnHttpStatus: row.retryOnHttpStatus || '',
                             proxyHost: row.proxyHost || '',
                             proxyPort: row.proxyPort,
                             proxyType: row.proxyType || 'HTTP'
@@ -417,14 +438,15 @@
                             enableJob: false,
                             stepsConfig: '[]',
                             poolId: '',
-                            connectTimeout: null,
-                            readTimeout: null,
-                            writeTimeout: null,
-                            callTimeout: null,
+                            connectTimeout: 10000,
+                            readTimeout: 10000,
+                            writeTimeout: 10000,
+                            callTimeout: 0,
                             retryOnConnectionFailure: null,
                             followRedirects: null,
                             followSslRedirects: null,
-                            dnsOverrides: '',
+                            retryMaxAttempts: 0,
+                            retryOnHttpStatus: '',
                             proxyHost: '',
                             proxyPort: null,
                             proxyType: 'HTTP'
@@ -529,11 +551,24 @@
                     });
                     
                     form.value.stepsConfig = JSON.stringify(steps.value);
-                    const res = await axios.post('http-jimu-api/save', form.value);
-                    if (res.data.code === 1000) {
-                        ElementPlus.ElMessage.success('保存成功');
-                        dialogVisible.value = false;
-                        fetchConfigs();
+                    form.value.retryOnHttpStatus = (form.value.retryOnHttpStatus || '').trim();
+                    if (!form.value.proxyHost) {
+                        form.value.proxyPort = null;
+                    }
+                    try {
+                        const res = await axios.post('http-jimu-api/save', form.value);
+                        if (res.data.code === 1000) {
+                            ElementPlus.ElMessage.success('保存成功');
+                            dialogVisible.value = false;
+                            fetchConfigs();
+                            return;
+                        }
+                        ElementPlus.ElMessage.error(res.data.msg || '保存失败');
+                    } catch (e) {
+                        const msg = e.response && e.response.data && e.response.data.msg
+                            ? e.response.data.msg
+                            : (e.message || '保存失败');
+                        ElementPlus.ElMessage.error(msg);
                     }
                 };
 
@@ -706,11 +741,20 @@
                     if (stepForm.value.type === 'SCRIPT' && stepScriptEditor) {
                         stepForm.value.scriptContent = stepScriptEditor.getValue();
                     }
-                    const res = await axios.post('http-jimu-api/steps/save', stepForm.value);
-                    if (res.data.code === 1000) {
-                        ElementPlus.ElMessage.success('保存成功');
-                        stepEditVisible.value = false;
-                        showStepLibrary(); // Refresh list
+                    try {
+                        const res = await axios.post('http-jimu-api/steps/save', stepForm.value);
+                        if (res.data.code === 1000) {
+                            ElementPlus.ElMessage.success('保存成功');
+                            stepEditVisible.value = false;
+                            showStepLibrary(); // Refresh list
+                            return;
+                        }
+                        ElementPlus.ElMessage.error(res.data.msg || '保存失败');
+                    } catch (e) {
+                        const msg = e.response && e.response.data && e.response.data.msg
+                            ? e.response.data.msg
+                            : (e.message || '保存失败');
+                        ElementPlus.ElMessage.error(msg);
                     }
                 };
 
@@ -757,8 +801,9 @@
                 });
 
                 return {
-                    configs, dialogVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, paramList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
+                    configs, dialogVisible, advancedConfigVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, paramList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
                     showEditDialog, addStep, saveConfig, deleteConfig, showTestDialog, runPreview, runTest, syncStepJson, validateScriptStep, handleMethodChange, handleBodyTypeChange, handleRawTypeChange, ensureEmptyRow, applyQuickCron, prettyJson, formatSnapshot,
+                    showAdvancedConfigDialog,
                     scheduleVisible, scheduleForm, logVisible, logDetailVisible, jobLogs, currentConfigName, currentLog,
                     showScheduleDialog, saveSchedule, showLogDialog, viewLogDetail,
                     // Step Library

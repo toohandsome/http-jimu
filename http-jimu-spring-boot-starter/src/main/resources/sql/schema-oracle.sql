@@ -1,4 +1,4 @@
--- Oracle 12c+ schema for HTTP Jimu（含中文表/字段注释）
+﻿-- Oracle 12c+ schema for HTTP Jimu（含中文表/字段注释）
 
 CREATE TABLE http_jimu_config (
     id VARCHAR2(64) PRIMARY KEY,
@@ -23,10 +23,11 @@ CREATE TABLE http_jimu_config (
     retry_on_connection_failure NUMBER(1),
     follow_redirects NUMBER(1),
     follow_ssl_redirects NUMBER(1),
-    dns_overrides CLOB,
     proxy_host VARCHAR2(255),
     proxy_port NUMBER(10),
     proxy_type VARCHAR2(20),
+    retry_max_attempts NUMBER(10),
+    retry_on_http_status VARCHAR2(255),
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -75,10 +76,11 @@ CREATE TABLE http_jimu_pool (
     retry_on_connection_failure NUMBER(1) DEFAULT 1 NOT NULL,
     follow_redirects NUMBER(1) DEFAULT 1 NOT NULL,
     follow_ssl_redirects NUMBER(1) DEFAULT 1 NOT NULL,
+    retry_max_attempts NUMBER(10) DEFAULT 0,
+    retry_on_http_status VARCHAR2(255),
     max_requests NUMBER(10) DEFAULT 64 NOT NULL,
     max_requests_per_host NUMBER(10) DEFAULT 5 NOT NULL,
     ping_interval NUMBER(10) DEFAULT 0 NOT NULL,
-    dns_overrides CLOB,
     proxy_host VARCHAR2(255),
     proxy_port NUMBER(10),
     proxy_type VARCHAR2(20),
@@ -117,10 +119,11 @@ COMMENT ON COLUMN http_jimu_config.call_timeout IS '请求总超时毫秒';
 COMMENT ON COLUMN http_jimu_config.retry_on_connection_failure IS '是否连接失败自动重试';
 COMMENT ON COLUMN http_jimu_config.follow_redirects IS '是否跟随HTTP重定向';
 COMMENT ON COLUMN http_jimu_config.follow_ssl_redirects IS '是否跟随SSL重定向';
-COMMENT ON COLUMN http_jimu_config.dns_overrides IS 'DNS覆盖配置(JSON)';
 COMMENT ON COLUMN http_jimu_config.proxy_host IS '代理主机';
 COMMENT ON COLUMN http_jimu_config.proxy_port IS '代理端口';
 COMMENT ON COLUMN http_jimu_config.proxy_type IS '代理类型(HTTP/SOCKS)';
+COMMENT ON COLUMN http_jimu_config.retry_max_attempts IS '业务级HTTP状态码重试次数';
+COMMENT ON COLUMN http_jimu_config.retry_on_http_status IS '触发重试的HTTP状态码列表';
 COMMENT ON COLUMN http_jimu_config.create_time IS '创建时间';
 COMMENT ON COLUMN http_jimu_config.update_time IS '更新时间';
 
@@ -161,10 +164,11 @@ COMMENT ON COLUMN http_jimu_pool.call_timeout IS '请求总超时毫秒';
 COMMENT ON COLUMN http_jimu_pool.retry_on_connection_failure IS '是否连接失败自动重试';
 COMMENT ON COLUMN http_jimu_pool.follow_redirects IS '是否跟随HTTP重定向';
 COMMENT ON COLUMN http_jimu_pool.follow_ssl_redirects IS '是否跟随SSL重定向';
+COMMENT ON COLUMN http_jimu_pool.retry_max_attempts IS '业务级HTTP状态码重试次数';
+COMMENT ON COLUMN http_jimu_pool.retry_on_http_status IS '触发重试的HTTP状态码列表';
 COMMENT ON COLUMN http_jimu_pool.max_requests IS '全局最大并发请求数';
 COMMENT ON COLUMN http_jimu_pool.max_requests_per_host IS '每个主机最大并发请求数';
 COMMENT ON COLUMN http_jimu_pool.ping_interval IS 'HTTP2心跳间隔毫秒';
-COMMENT ON COLUMN http_jimu_pool.dns_overrides IS 'DNS覆盖配置(JSON)';
 COMMENT ON COLUMN http_jimu_pool.proxy_host IS '代理主机';
 COMMENT ON COLUMN http_jimu_pool.proxy_port IS '代理端口';
 COMMENT ON COLUMN http_jimu_pool.proxy_type IS '代理类型(HTTP/SOCKS)';

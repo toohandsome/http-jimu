@@ -1,4 +1,4 @@
--- SQL Server schema for HTTP Jimu（含中文表注释）
+﻿-- SQL Server schema for HTTP Jimu（含中文表注释）
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'http_jimu_config')
 BEGIN
@@ -25,13 +25,26 @@ BEGIN
         retry_on_connection_failure BIT NULL,
         follow_redirects BIT NULL,
         follow_ssl_redirects BIT NULL,
-        dns_overrides NVARCHAR(MAX) NULL,
         proxy_host VARCHAR(255) NULL,
         proxy_port INT NULL,
         proxy_type VARCHAR(20) NULL,
+        retry_max_attempts INT NULL,
+        retry_on_http_status VARCHAR(255) NULL,
         create_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_config_create_time DEFAULT GETDATE(),
         update_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_config_update_time DEFAULT GETDATE()
     );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'retry_max_attempts')
+BEGIN
+    ALTER TABLE http_jimu_config ADD retry_max_attempts INT NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'retry_on_http_status')
+BEGIN
+    ALTER TABLE http_jimu_config ADD retry_on_http_status VARCHAR(255) NULL;
 END
 GO
 
@@ -102,16 +115,29 @@ BEGIN
         retry_on_connection_failure BIT NOT NULL CONSTRAINT df_http_jimu_pool_retry_on_connection_failure DEFAULT 1,
         follow_redirects BIT NOT NULL CONSTRAINT df_http_jimu_pool_follow_redirects DEFAULT 1,
         follow_ssl_redirects BIT NOT NULL CONSTRAINT df_http_jimu_pool_follow_ssl_redirects DEFAULT 1,
+        retry_max_attempts INT NOT NULL CONSTRAINT df_http_jimu_pool_retry_max_attempts DEFAULT 0,
+        retry_on_http_status VARCHAR(255) NULL,
         max_requests INT NOT NULL CONSTRAINT df_http_jimu_pool_max_requests DEFAULT 64,
         max_requests_per_host INT NOT NULL CONSTRAINT df_http_jimu_pool_max_requests_per_host DEFAULT 5,
         ping_interval INT NOT NULL CONSTRAINT df_http_jimu_pool_ping_interval DEFAULT 0,
-        dns_overrides NVARCHAR(MAX) NULL,
         proxy_host VARCHAR(255) NULL,
         proxy_port INT NULL,
         proxy_type VARCHAR(20) NULL,
         create_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_pool_create_time DEFAULT GETDATE(),
         update_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_pool_update_time DEFAULT GETDATE()
     );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_pool') AND name = 'retry_max_attempts')
+BEGIN
+    ALTER TABLE http_jimu_pool ADD retry_max_attempts INT NOT NULL CONSTRAINT df_http_jimu_pool_retry_max_attempts_alter DEFAULT 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_pool') AND name = 'retry_on_http_status')
+BEGIN
+    ALTER TABLE http_jimu_pool ADD retry_on_http_status VARCHAR(255) NULL;
 END
 GO
 

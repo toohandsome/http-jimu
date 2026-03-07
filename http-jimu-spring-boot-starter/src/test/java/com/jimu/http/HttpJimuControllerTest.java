@@ -88,6 +88,30 @@ class HttpJimuControllerTest {
     }
 
     @Test
+    void shouldReturnBusinessErrorWhenSavePoolFails() {
+        HttpJimuPool pool = new HttpJimuPool();
+        pool.setName("pool-1");
+        when(poolService.saveOrUpdate(any())).thenThrow(new IllegalArgumentException("pool name already exists: pool-1"));
+
+        Result<Boolean> result = controller.savePool(pool);
+
+        assertEquals(1100, result.getCode());
+        assertEquals("pool name already exists: pool-1", result.getMsg());
+    }
+
+    @Test
+    void shouldReturnBusinessErrorWhenSaveStepFails() {
+        HttpJimuStep step = new HttpJimuStep();
+        step.setCode("STEP_1");
+        when(stepService.saveOrUpdate(any())).thenThrow(new IllegalArgumentException("step code already exists: STEP_1"));
+
+        Result<Boolean> result = controller.saveStep(step);
+
+        assertEquals(1100, result.getCode());
+        assertEquals("step code already exists: STEP_1", result.getMsg());
+    }
+
+    @Test
     void shouldValidateScriptSuccessAndFailure() {
         when(scriptMetaService.validateScript(Map.of("script", ""))).thenReturn(Result.success(Map.of("valid", false)));
         Result<Map<String, Object>> empty = controller.validateScript(Map.of("script", ""));

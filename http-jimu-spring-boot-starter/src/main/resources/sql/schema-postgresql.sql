@@ -1,4 +1,4 @@
--- PostgreSQL 13+ schema for HTTP Jimu（含中文表/字段注释）
+﻿-- PostgreSQL 13+ schema for HTTP Jimu（含中文表/字段注释）
 
 CREATE TABLE IF NOT EXISTS http_jimu_config (
     id VARCHAR(64) PRIMARY KEY,
@@ -23,13 +23,17 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
     retry_on_connection_failure BOOLEAN,
     follow_redirects BOOLEAN,
     follow_ssl_redirects BOOLEAN,
-    dns_overrides TEXT,
     proxy_host VARCHAR(255),
     proxy_port INTEGER,
     proxy_type VARCHAR(20),
+    retry_max_attempts INTEGER,
+    retry_on_http_status VARCHAR(255),
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_max_attempts INTEGER;
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255);
 
 CREATE INDEX IF NOT EXISTS idx_http_jimu_config_enable_job ON http_jimu_config(enable_job);
 
@@ -75,16 +79,20 @@ CREATE TABLE IF NOT EXISTS http_jimu_pool (
     retry_on_connection_failure BOOLEAN NOT NULL DEFAULT TRUE,
     follow_redirects BOOLEAN NOT NULL DEFAULT TRUE,
     follow_ssl_redirects BOOLEAN NOT NULL DEFAULT TRUE,
+    retry_max_attempts INTEGER NOT NULL DEFAULT 0,
+    retry_on_http_status VARCHAR(255),
     max_requests INTEGER NOT NULL DEFAULT 64,
     max_requests_per_host INTEGER NOT NULL DEFAULT 5,
     ping_interval INTEGER NOT NULL DEFAULT 0,
-    dns_overrides TEXT,
     proxy_host VARCHAR(255),
     proxy_port INTEGER,
     proxy_type VARCHAR(20),
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_max_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255);
 
 -- ShedLock table for JDBC distributed lock fallback
 CREATE TABLE IF NOT EXISTS jimu_shedlock (
@@ -117,10 +125,11 @@ COMMENT ON COLUMN http_jimu_config.call_timeout IS '请求总超时毫秒';
 COMMENT ON COLUMN http_jimu_config.retry_on_connection_failure IS '是否连接失败自动重试';
 COMMENT ON COLUMN http_jimu_config.follow_redirects IS '是否跟随HTTP重定向';
 COMMENT ON COLUMN http_jimu_config.follow_ssl_redirects IS '是否跟随SSL重定向';
-COMMENT ON COLUMN http_jimu_config.dns_overrides IS 'DNS覆盖配置(JSON)';
 COMMENT ON COLUMN http_jimu_config.proxy_host IS '代理主机';
 COMMENT ON COLUMN http_jimu_config.proxy_port IS '代理端口';
 COMMENT ON COLUMN http_jimu_config.proxy_type IS '代理类型(HTTP/SOCKS)';
+COMMENT ON COLUMN http_jimu_config.retry_max_attempts IS '业务级HTTP状态码重试次数';
+COMMENT ON COLUMN http_jimu_config.retry_on_http_status IS '触发重试的HTTP状态码列表';
 COMMENT ON COLUMN http_jimu_config.create_time IS '创建时间';
 COMMENT ON COLUMN http_jimu_config.update_time IS '更新时间';
 
@@ -161,10 +170,11 @@ COMMENT ON COLUMN http_jimu_pool.call_timeout IS '请求总超时毫秒';
 COMMENT ON COLUMN http_jimu_pool.retry_on_connection_failure IS '是否连接失败自动重试';
 COMMENT ON COLUMN http_jimu_pool.follow_redirects IS '是否跟随HTTP重定向';
 COMMENT ON COLUMN http_jimu_pool.follow_ssl_redirects IS '是否跟随SSL重定向';
+COMMENT ON COLUMN http_jimu_pool.retry_max_attempts IS '业务级HTTP状态码重试次数';
+COMMENT ON COLUMN http_jimu_pool.retry_on_http_status IS '触发重试的HTTP状态码列表';
 COMMENT ON COLUMN http_jimu_pool.max_requests IS '全局最大并发请求数';
 COMMENT ON COLUMN http_jimu_pool.max_requests_per_host IS '每个主机最大并发请求数';
 COMMENT ON COLUMN http_jimu_pool.ping_interval IS 'HTTP2心跳间隔毫秒';
-COMMENT ON COLUMN http_jimu_pool.dns_overrides IS 'DNS覆盖配置(JSON)';
 COMMENT ON COLUMN http_jimu_pool.proxy_host IS '代理主机';
 COMMENT ON COLUMN http_jimu_pool.proxy_port IS '代理端口';
 COMMENT ON COLUMN http_jimu_pool.proxy_type IS '代理类型(HTTP/SOCKS)';

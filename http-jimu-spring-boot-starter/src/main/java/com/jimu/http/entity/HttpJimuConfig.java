@@ -32,7 +32,6 @@ public class HttpJimuConfig {
     private Boolean retryOnConnectionFailure;
     private Boolean followRedirects;
     private Boolean followSslRedirects;
-    private String dnsOverrides; // JSON: {"host":"ip"}
     private String proxyHost;
     private Integer proxyPort;
     private String proxyType; // HTTP, SOCKS

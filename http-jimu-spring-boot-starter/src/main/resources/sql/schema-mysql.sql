@@ -1,4 +1,4 @@
--- MySQL 8+ schema for HTTP Jimu（含中文表/字段注释）
+﻿-- MySQL 8+ schema for HTTP Jimu（含中文表/字段注释）
 
 CREATE TABLE IF NOT EXISTS http_jimu_config (
     id VARCHAR(64) NOT NULL COMMENT '主键ID',
@@ -23,16 +23,20 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
     retry_on_connection_failure TINYINT(1) NULL COMMENT '是否连接失败自动重试',
     follow_redirects TINYINT(1) NULL COMMENT '是否跟随HTTP重定向',
     follow_ssl_redirects TINYINT(1) NULL COMMENT '是否跟随SSL重定向',
-    dns_overrides TEXT NULL COMMENT 'DNS覆盖配置(JSON)',
     proxy_host VARCHAR(255) NULL COMMENT '代理主机',
     proxy_port INT NULL COMMENT '代理端口',
     proxy_type VARCHAR(20) NULL COMMENT '代理类型(HTTP/SOCKS)',
+    retry_max_attempts INT NULL COMMENT '业务级HTTP状态码重试次数',
+    retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表',
     create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_http_jimu_config_http_id (http_id),
     KEY idx_http_jimu_config_enable_job (enable_job)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP积木接口配置表';
+
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_max_attempts INT NULL COMMENT '业务级HTTP状态码重试次数';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表';
 
 CREATE TABLE IF NOT EXISTS http_jimu_job_log (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -78,10 +82,11 @@ CREATE TABLE IF NOT EXISTS http_jimu_pool (
     retry_on_connection_failure TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否连接失败自动重试',
     follow_redirects TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否跟随HTTP重定向',
     follow_ssl_redirects TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否跟随SSL重定向',
+    retry_max_attempts INT NOT NULL DEFAULT 0 COMMENT '业务级HTTP状态码重试次数',
+    retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表',
     max_requests INT NOT NULL DEFAULT 64 COMMENT '全局最大并发请求数',
     max_requests_per_host INT NOT NULL DEFAULT 5 COMMENT '每个主机最大并发请求数',
     ping_interval INT NOT NULL DEFAULT 0 COMMENT 'HTTP2心跳间隔毫秒',
-    dns_overrides TEXT NULL COMMENT 'DNS覆盖配置(JSON)',
     proxy_host VARCHAR(255) NULL COMMENT '代理主机',
     proxy_port INT NULL COMMENT '代理端口',
     proxy_type VARCHAR(20) NULL COMMENT '代理类型(HTTP/SOCKS)',
@@ -90,6 +95,9 @@ CREATE TABLE IF NOT EXISTS http_jimu_pool (
     PRIMARY KEY (id),
     UNIQUE KEY uk_http_jimu_pool_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP客户端连接池配置表';
+
+ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_max_attempts INT NOT NULL DEFAULT 0 COMMENT '业务级HTTP状态码重试次数';
+ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表';
 
 -- ShedLock table for JDBC distributed lock fallback
 CREATE TABLE IF NOT EXISTS jimu_shedlock (

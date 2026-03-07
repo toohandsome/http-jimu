@@ -14,7 +14,9 @@ import com.jimu.http.engine.step.StepContext;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
 import com.jimu.http.engine.support.JimuExpressionResolver;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
+import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuStepService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +56,7 @@ class HttpJimuEngineCoreTest {
     private HttpJimuStepService stepService;
     private ApplicationContext applicationContext;
     private HttpJimuTransportSupport transportSupport;
+    private HttpJimuPoolService poolService;
     private SignStepProcessor signProcessor;
     private ScriptStepProcessor scriptProcessor;
     private JimuProperties jimuProperties;
@@ -69,6 +73,7 @@ class HttpJimuEngineCoreTest {
         stepService = mock(HttpJimuStepService.class);
         applicationContext = mock(ApplicationContext.class);
         transportSupport = mock(HttpJimuTransportSupport.class);
+        poolService = mock(HttpJimuPoolService.class);
 
         when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[0]);
         when(transportSupport.mergeUrlQueryParams(anyString(), any(Map.class)))
@@ -79,6 +84,7 @@ class HttpJimuEngineCoreTest {
         ReflectionTestUtils.setField(engine, "expressionResolver", expressionResolver);
         ReflectionTestUtils.setField(engine, "stepService", stepService);
         ReflectionTestUtils.setField(engine, "transportSupport", transportSupport);
+        ReflectionTestUtils.setField(engine, "poolService", poolService);
 
         signProcessor = new SignStepProcessor(expressionResolver);
         scriptProcessor = new ScriptStepProcessor(jimuProperties);
@@ -269,6 +275,44 @@ class HttpJimuEngineCoreTest {
         ExecuteDetail detail = engine.executeWithDetail(config, Map.of());
         assertEquals(201, detail.getResponseStatus());
         verify(transportSupport).sendRequestWithDetail(any(), anyString(), anyString(), any(Map.class), any());
+    }
+
+    @Test
+    void shouldInheritRetryConfigFromPoolWhenConfigNotSet() {
+        ExecuteDetail retryResponse = new ExecuteDetail();
+        retryResponse.setResponseStatus(503);
+        retryResponse.setRequestHeaders(new LinkedHashMap<>());
+        retryResponse.setResponseHeaders(new LinkedHashMap<>());
+        retryResponse.setResponseBody("busy");
+
+        ExecuteDetail successResponse = new ExecuteDetail();
+        successResponse.setResponseStatus(200);
+        successResponse.setRequestHeaders(new LinkedHashMap<>());
+        successResponse.setResponseHeaders(new LinkedHashMap<>());
+        successResponse.setResponseBody("ok");
+
+        when(transportSupport.sendRequestWithDetail(any(), anyString(), anyString(), any(Map.class), any()))
+                .thenReturn(retryResponse, successResponse);
+
+        HttpJimuPool pool = new HttpJimuPool();
+        pool.setId("pool-1");
+        pool.setRetryMaxAttempts(1);
+        pool.setRetryOnHttpStatus("503");
+        when(poolService.getById("pool-1")).thenReturn(pool);
+
+        HttpJimuConfig config = new HttpJimuConfig();
+        config.setHttpId("h3");
+        config.setPoolId("pool-1");
+        config.setMethod("GET");
+        config.setUrl("https://x.test/retry");
+        config.setHeaders("[]");
+        config.setQueryParams("[]");
+        config.setBodyType("none");
+
+        ExecuteDetail detail = engine.executeWithDetail(config, Map.of());
+        assertEquals(200, detail.getResponseStatus());
+        verify(poolService, times(2)).getById("pool-1");
+        verify(transportSupport, times(2)).sendRequestWithDetail(any(), anyString(), anyString(), any(Map.class), any());
     }
 
     @Test
