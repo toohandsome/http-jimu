@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
     proxy_host VARCHAR(255),
     proxy_port INTEGER,
     proxy_type VARCHAR(20),
+    expose_api BOOLEAN DEFAULT FALSE,
+    exposed_path VARCHAR(255),
+    exposed_method VARCHAR(10),
+    exposed_param_type VARCHAR(20),
+    exposed_mapping_config TEXT,
     retry_max_attempts INTEGER,
     retry_on_http_status VARCHAR(255),
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -34,6 +39,11 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
 
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_max_attempts INTEGER;
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255);
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS expose_api BOOLEAN DEFAULT FALSE;
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_path VARCHAR(255);
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_method VARCHAR(10);
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_param_type VARCHAR(20);
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_mapping_config TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_http_jimu_config_enable_job ON http_jimu_config(enable_job);
 

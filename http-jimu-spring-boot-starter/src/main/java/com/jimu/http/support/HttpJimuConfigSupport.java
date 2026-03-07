@@ -17,6 +17,9 @@ public final class HttpJimuConfigSupport {
     private static final Set<String> ALLOWED_HTTP_METHODS = Set.of(
             "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"
     );
+    private static final Set<String> ALLOWED_EXPOSED_PARAM_TYPES = Set.of(
+            "AUTO", "CUSTOM"
+    );
 
     private HttpJimuConfigSupport() {
     }
@@ -51,6 +54,48 @@ public final class HttpJimuConfigSupport {
             return "Unsupported HTTP method: " + config.getMethod();
         }
         config.setMethod(normalized);
+        return null;
+    }
+
+    public static String validateAndNormalizeExposedApi(HttpJimuConfig config) {
+        if (config == null) {
+            return "Config cannot be null";
+        }
+        if (!Boolean.TRUE.equals(config.getExposeApi())) {
+            if (StrUtil.isNotBlank(config.getExposedMethod())) {
+                config.setExposedMethod(config.getExposedMethod().trim().toUpperCase(Locale.ROOT));
+            }
+            if (StrUtil.isNotBlank(config.getExposedParamType())) {
+                config.setExposedParamType(config.getExposedParamType().trim().toUpperCase(Locale.ROOT));
+            }
+            return null;
+        }
+        if (StrUtil.isBlank(config.getExposedPath())) {
+            return "Exposed path cannot be empty when exposeApi is enabled";
+        }
+        String normalizedPath = config.getExposedPath().trim();
+        if (!normalizedPath.startsWith("/")) {
+            normalizedPath = "/" + normalizedPath;
+        }
+        if (normalizedPath.length() > 1 && normalizedPath.endsWith("/")) {
+            normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
+        }
+        config.setExposedPath(normalizedPath);
+
+        String method = firstNonBlank(config.getExposedMethod(), config.getMethod(), "POST");
+        method = method.trim().toUpperCase(Locale.ROOT);
+        if (!ALLOWED_HTTP_METHODS.contains(method)) {
+            return "Unsupported exposed HTTP method: " + config.getExposedMethod();
+        }
+        config.setExposedMethod(method);
+
+        String paramType = StrUtil.blankToDefault(config.getExposedParamType(), "AUTO")
+                .trim()
+                .toUpperCase(Locale.ROOT);
+        if (!ALLOWED_EXPOSED_PARAM_TYPES.contains(paramType)) {
+            return "Unsupported exposed param type: " + config.getExposedParamType();
+        }
+        config.setExposedParamType(paramType);
         return null;
     }
 

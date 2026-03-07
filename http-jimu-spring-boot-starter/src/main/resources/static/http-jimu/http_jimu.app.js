@@ -2,6 +2,7 @@
             setup() {
                 const configs = ref([]);
                 const dialogVisible = ref(false);
+                const publishVisible = ref(false);
                 const advancedConfigVisible = ref(false);
                 const testVisible = ref(false);
                 const testLoading = ref(false);
@@ -11,7 +12,9 @@
                 const testParams = ref('{}');
                 const testHttpId = ref('');
                 const headerList = ref([]);
-                const paramList = ref([]);
+                const queryParamList = ref([]);
+                const contextParamList = ref([]);
+                const exposedMappingList = ref([]);
                 const bodyFormDataList = ref([]);
                 const bodyUrlEncodedList = ref([]);
                 const quickCron = ref('');
@@ -53,6 +56,13 @@
                     html: 'plaintext',
                     xml: 'plaintext'
                 };
+                const normalizeHttpMethod = (method, fallback = 'POST') => {
+                    const value = (method || fallback || 'POST').toString().trim().toUpperCase();
+                    return value || 'POST';
+                };
+                const resolveExposedMethodDefault = (row) => normalizeHttpMethod(
+                    row && row.exposeApi && row.exposedMethod ? row.exposedMethod : (row && row.method ? row.method : 'POST')
+                );
                 
                 const form = ref({
                     id: '',
@@ -80,7 +90,24 @@
                     retryOnHttpStatus: '',
                     proxyHost: '',
                     proxyPort: null,
-                    proxyType: 'HTTP'
+                    proxyType: 'HTTP',
+                    paramsConfig: '[]',
+                    exposeApi: false,
+                    exposedPath: '',
+                    exposedMethod: 'POST',
+                    exposedParamType: 'AUTO',
+                    exposedMappingConfig: '[]'
+                });
+                const publishForm = ref({
+                    id: '',
+                    httpId: '',
+                    name: '',
+                    exposeApi: false,
+                    exposedPath: '',
+                    exposedMethod: 'POST',
+                    exposedParamType: 'AUTO',
+                    exposedMappingConfig: '[]',
+                    paramsConfig: '[]'
                 });
 
                 // 连接池相关
@@ -221,7 +248,15 @@
                 };
 
                 dynamicScriptMetaSupplier = () => {
-                    const contextKeys = collectNonEmptyKeys(paramList.value);
+                    let contextKeys = [];
+                    try {
+                        const parsed = JSON.parse(form.value.paramsConfig || '[]');
+                        if (Array.isArray(parsed)) {
+                            contextKeys = collectNonEmptyKeys(parsed.map((item) => ({ key: item.key })));
+                        }
+                    } catch (e) {
+                        contextKeys = [];
+                    }
                     const headerKeys = collectNonEmptyKeys(headerList.value);
                     const formBodyKeys = form.value.bodyType === 'form-data'
                         ? collectNonEmptyKeys(bodyFormDataList.value)
@@ -306,10 +341,47 @@
                     }
                 });
 
-                const ensureEmptyRow = (list) => {
-                    if (list.length === 0 || list[list.length - 1].key) {
-                        list.push({ key: '', value: '' });
+	                const ensureEmptyRow = (list) => {
+	                    if (list.length === 0 || list[list.length - 1].key) {
+	                        list.push({ key: '', value: '' });
+	                    }
+	                };
+
+	                const ensureContextParamEmptyRow = () => {
+	                    if (contextParamList.value.length === 0) {
+	                        contextParamList.value.push({ key: '', source: '', defaultValue: '' });
+	                        return;
+	                    }
+	                    const last = contextParamList.value[contextParamList.value.length - 1];
+	                    if (last.key || last.source || last.defaultValue) {
+	                        contextParamList.value.push({ key: '', source: '', defaultValue: '' });
+	                    }
+	                };
+
+	                const ensureExposedMappingEmptyRow = () => {
+	                    if (exposedMappingList.value.length === 0) {
+	                        exposedMappingList.value.push({ sourceType: 'QUERY', targetType: 'BODY' });
+	                        return;
+	                    }
+	                    const last = exposedMappingList.value[exposedMappingList.value.length - 1];
+	                    if (last.sourceType || last.targetType) {
+	                        exposedMappingList.value.push({ sourceType: 'QUERY', targetType: 'BODY' });
+	                    }
+	                };
+
+                const availableMappingTargetTypes = (sourceType) => {
+                    if (sourceType === 'RAW') {
+                        return ['RAW'];
                     }
+                    return ['PATH', 'QUERY', 'BODY', 'HEADER', 'FORM'];
+                };
+
+                const handleMappingSourceTypeChange = (row) => {
+                    const options = availableMappingTargetTypes(row.sourceType);
+                    if (!options.includes(row.targetType)) {
+                        row.targetType = options[0];
+                    }
+                    ensureExposedMappingEmptyRow();
                 };
 
                 const handleMethodChange = (method) => {
@@ -385,7 +457,13 @@
                             retryOnHttpStatus: row.retryOnHttpStatus || '',
                             proxyHost: row.proxyHost || '',
                             proxyPort: row.proxyPort,
-                            proxyType: row.proxyType || 'HTTP'
+                            proxyType: row.proxyType || 'HTTP',
+                            paramsConfig: row.paramsConfig || '[]',
+                            exposeApi: !!row.exposeApi,
+                            exposedPath: row.exposedPath || '',
+                            exposedMethod: resolveExposedMethodDefault(row),
+                            exposedParamType: row.exposedParamType || 'AUTO',
+                            exposedMappingConfig: row.exposedMappingConfig || '[]'
                         };
                         // Headers
                         try {
@@ -397,9 +475,9 @@
                         // Params
                         try {
                             const p = JSON.parse(row.queryParams || '[]');
-                            paramList.value = Array.isArray(p) ? p : [];
-                        } catch(e) { paramList.value = []; }
-                        ensureEmptyRow(paramList.value);
+                            queryParamList.value = Array.isArray(p) ? p : [];
+                        } catch(e) { queryParamList.value = []; }
+                        ensureEmptyRow(queryParamList.value);
                         
                         // Body
                         if (row.bodyType === 'form-data') {
@@ -449,12 +527,18 @@
                             retryOnHttpStatus: '',
                             proxyHost: '',
                             proxyPort: null,
-                            proxyType: 'HTTP'
+                            proxyType: 'HTTP',
+                            paramsConfig: '[]',
+                            exposeApi: false,
+                            exposedPath: '',
+                            exposedMethod: normalizeHttpMethod('POST'),
+                            exposedParamType: 'AUTO',
+                            exposedMappingConfig: '[]'
                         };
                         steps.value = [];
                         quickCron.value = '';
                         headerList.value = [{key: 'Content-Type', value: 'application/json'}, {key: '', value: ''}];
-                        paramList.value = [{key: '', value: ''}];
+                        queryParamList.value = [{key: '', value: ''}];
                         bodyFormDataList.value = [{key: '', value: ''}];
                         bodyUrlEncodedList.value = [{key: '', value: ''}];
                         initBodyEditor('{}', 'json');
@@ -531,7 +615,7 @@
                         return;
                     }
                     form.value.headers = JSON.stringify(headerList.value.filter(h => h.key));
-                    form.value.queryParams = JSON.stringify(paramList.value.filter(p => p.key));
+                    form.value.queryParams = JSON.stringify(queryParamList.value.filter(p => p.key));
                     
                     if (form.value.bodyType === 'form-data') {
                         form.value.bodyConfig = JSON.stringify(bodyFormDataList.value.filter(b => b.key));
@@ -555,11 +639,86 @@
                     if (!form.value.proxyHost) {
                         form.value.proxyPort = null;
                     }
+                    if (!form.value.exposeApi) {
+                        form.value.exposedPath = '';
+                        form.value.exposedMethod = normalizeHttpMethod(form.value.method);
+                        form.value.exposedParamType = 'AUTO';
+                        form.value.exposedMappingConfig = '[]';
+                    }
                     try {
                         const res = await axios.post('http-jimu-api/save', form.value);
                         if (res.data.code === 1000) {
                             ElementPlus.ElMessage.success('保存成功');
                             dialogVisible.value = false;
+                            fetchConfigs();
+                            return;
+                        }
+                        ElementPlus.ElMessage.error(res.data.msg || '保存失败');
+                    } catch (e) {
+                        const msg = e.response && e.response.data && e.response.data.msg
+                            ? e.response.data.msg
+                            : (e.message || '保存失败');
+                        ElementPlus.ElMessage.error(msg);
+                    }
+                };
+
+                const showPublishDialog = (row) => {
+                    publishForm.value = {
+                        ...row,
+                        exposeApi: true,
+                        exposedPath: row.exposedPath || '',
+                        exposedMethod: resolveExposedMethodDefault(row),
+                        exposedParamType: row.exposedParamType || 'AUTO',
+                        exposedMappingConfig: row.exposedMappingConfig || '[]',
+                        paramsConfig: row.paramsConfig || '[]'
+                    };
+                    try {
+                        const pc = JSON.parse(row.paramsConfig || '[]');
+                        contextParamList.value = Array.isArray(pc)
+                            ? pc.map((item) => ({
+                                key: item.key || '',
+                                source: item.source || '',
+                                defaultValue: item.defaultValue || ''
+                            }))
+                            : [];
+                    } catch (e) { contextParamList.value = []; }
+                    ensureContextParamEmptyRow();
+                    try {
+                        const mc = JSON.parse(row.exposedMappingConfig || '[]');
+                        exposedMappingList.value = Array.isArray(mc)
+                            ? mc.map((item) => ({
+                                sourceType: item.sourceType || 'QUERY',
+                                targetType: item.targetType || 'BODY'
+                            }))
+                            : [];
+                    } catch (e) { exposedMappingList.value = []; }
+                    ensureExposedMappingEmptyRow();
+                    publishVisible.value = true;
+                };
+
+                const savePublishConfig = async () => {
+                    publishForm.value.paramsConfig = JSON.stringify(contextParamList.value
+                        .filter(p => p.key)
+                        .map((item) => ({
+                            key: item.key,
+                            source: item.source,
+                            defaultValue: item.defaultValue
+                        })));
+                    if (publishForm.value.exposedParamType === 'CUSTOM') {
+                        publishForm.value.exposedMappingConfig = JSON.stringify(exposedMappingList.value
+                            .filter(item => item.sourceType && item.targetType)
+                            .map((item) => ({
+                                sourceType: item.sourceType,
+                                targetType: item.targetType
+                            })));
+                    } else {
+                        publishForm.value.exposedMappingConfig = '[]';
+                    }
+                    try {
+                        const res = await axios.post('http-jimu-api/save', publishForm.value);
+                        if (res.data.code === 1000) {
+                            ElementPlus.ElMessage.success('发布配置已更新');
+                            publishVisible.value = false;
                             fetchConfigs();
                             return;
                         }
@@ -801,8 +960,8 @@
                 });
 
                 return {
-                    configs, dialogVisible, advancedConfigVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, paramList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
-                    showEditDialog, addStep, saveConfig, deleteConfig, showTestDialog, runPreview, runTest, syncStepJson, validateScriptStep, handleMethodChange, handleBodyTypeChange, handleRawTypeChange, ensureEmptyRow, applyQuickCron, prettyJson, formatSnapshot,
+                    configs, dialogVisible, publishVisible, publishForm, advancedConfigVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, queryParamList, contextParamList, exposedMappingList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
+                    showEditDialog, showPublishDialog, addStep, saveConfig, savePublishConfig, deleteConfig, showTestDialog, runPreview, runTest, syncStepJson, validateScriptStep, handleMethodChange, handleBodyTypeChange, handleRawTypeChange, ensureEmptyRow, ensureContextParamEmptyRow, ensureExposedMappingEmptyRow, availableMappingTargetTypes, handleMappingSourceTypeChange, applyQuickCron, prettyJson, formatSnapshot,
                     showAdvancedConfigDialog,
                     scheduleVisible, scheduleForm, logVisible, logDetailVisible, jobLogs, currentConfigName, currentLog,
                     showScheduleDialog, saveSchedule, showLogDialog, viewLogDetail,

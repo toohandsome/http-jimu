@@ -34,11 +34,11 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -248,6 +248,24 @@ class HttpJimuEngineCoreTest {
         assertEquals("POST", detail.getRequestMethod());
         assertTrue(detail.getRequestBody().contains("\"x\":\"1\""));
         assertFalse(detail.getStepTraces().isEmpty());
+    }
+
+    @Test
+    void shouldRemoveHeaderCaseInsensitivelyInScriptStep() {
+        HttpJimuConfig config = new HttpJimuConfig();
+        config.setHttpId("h-case-header");
+        config.setMethod("GET");
+        config.setUrl("https://x.test/api");
+        config.setHeaders("{\"sec-ch-ua\":\"demo\",\"accept\":\"application/json\"}");
+        config.setQueryParams("[]");
+        config.setBodyType("none");
+        config.setStepsConfig("[{\"type\":\"SCRIPT\",\"target\":\"HEADER\",\"config\":{\"script\":\"headers.remove('Sec-Ch-Ua'); return headers\"},\"enableLog\":false}]");
+
+        PreviewDetail detail = engine.previewWithSteps(config, Map.of());
+
+        assertFalse(detail.getRequestHeaders().containsKey("sec-ch-ua"));
+        assertFalse(detail.getRequestHeaders().containsKey("Sec-Ch-Ua"));
+        assertEquals("application/json", detail.getRequestHeaders().get("accept"));
     }
 
     @Test

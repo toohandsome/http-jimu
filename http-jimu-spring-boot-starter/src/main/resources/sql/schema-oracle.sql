@@ -26,6 +26,11 @@ CREATE TABLE http_jimu_config (
     proxy_host VARCHAR2(255),
     proxy_port NUMBER(10),
     proxy_type VARCHAR2(20),
+    expose_api NUMBER(1) DEFAULT 0,
+    exposed_path VARCHAR2(255),
+    exposed_method VARCHAR2(10),
+    exposed_param_type VARCHAR2(20),
+    exposed_mapping_config CLOB,
     retry_max_attempts NUMBER(10),
     retry_on_http_status VARCHAR2(255),
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -122,6 +127,11 @@ COMMENT ON COLUMN http_jimu_config.follow_ssl_redirects IS '是否跟随SSL重�
 COMMENT ON COLUMN http_jimu_config.proxy_host IS '代理主机';
 COMMENT ON COLUMN http_jimu_config.proxy_port IS '代理端口';
 COMMENT ON COLUMN http_jimu_config.proxy_type IS '代理类型(HTTP/SOCKS)';
+COMMENT ON COLUMN http_jimu_config.expose_api IS '是否暴露为Spring入站接口';
+COMMENT ON COLUMN http_jimu_config.exposed_path IS '入站接口路径';
+COMMENT ON COLUMN http_jimu_config.exposed_method IS '入站接口HTTP方法';
+COMMENT ON COLUMN http_jimu_config.exposed_param_type IS '入站接口参数提取模式';
+COMMENT ON COLUMN http_jimu_config.exposed_mapping_config IS '入站接口自定义映射配置';
 COMMENT ON COLUMN http_jimu_config.retry_max_attempts IS '业务级HTTP状态码重试次数';
 COMMENT ON COLUMN http_jimu_config.retry_on_http_status IS '触发重试的HTTP状态码列表';
 COMMENT ON COLUMN http_jimu_config.create_time IS '创建时间';

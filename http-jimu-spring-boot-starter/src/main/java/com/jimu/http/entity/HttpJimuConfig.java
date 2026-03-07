@@ -35,6 +35,26 @@ public class HttpJimuConfig {
     private String proxyHost;
     private Integer proxyPort;
     private String proxyType; // HTTP, SOCKS
+    /**
+     * Whether to expose this config as an inbound Spring MVC API.
+     */
+    private Boolean exposeApi;
+    /**
+     * Inbound API path, for example /open-api/orders/{id}.
+     */
+    private String exposedPath;
+    /**
+     * Inbound API HTTP method.
+     */
+    private String exposedMethod;
+    /**
+     * Inbound parameter extraction mode: AUTO, QUERY, FORM, JSON_BODY, RAW_BODY.
+     */
+    private String exposedParamType;
+    /**
+     * Custom inbound-to-outbound mapping config.
+     */
+    private String exposedMappingConfig;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     /**

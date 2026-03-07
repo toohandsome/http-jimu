@@ -14,6 +14,7 @@ import com.jimu.http.engine.model.ExecuteDetail;
 import com.jimu.http.engine.model.PreparedExecution;
 import com.jimu.http.engine.model.PreviewDetail;
 import com.jimu.http.engine.model.StepTrace;
+import com.jimu.http.controller.HttpJimuExposedRequestResolver;
 import com.jimu.http.engine.step.StepContext;
 import com.jimu.http.engine.step.StepProcessor;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedCaseInsensitiveMap;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -176,8 +178,13 @@ public class HttpJimuEngine {
         Map<String, Object> context = HttpJimuConfigSupport.buildContext(safeInputParams, config.getParamsConfig());
         String finalUrl = expressionResolver.resolve(config.getUrl(), context);
         Map<String, String> queryParams = parseKvConfig(config.getQueryParams(), context);
-        Map<String, String> headers = parseKvConfig(config.getHeaders(), context);
+        Map<String, String> headers = toCaseInsensitiveHeaders(parseKvConfig(config.getHeaders(), context));
         Object body = initializeBody(config, context);
+        queryParams.putAll(toStringMap(safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_QUERY_KEY)));
+        headers.putAll(toStringMap(safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_HEADER_KEY)));
+        body = mergeRawInjection(body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_RAW_KEY));
+        body = mergeBodyInjection(body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_BODY_KEY));
+        body = mergeFormInjection(config, body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_FORM_KEY));
         List<HttpStep> steps = resolveSteps(config.getStepsConfig());
 
         List<StepTrace> traces = includeStepTraces ? new ArrayList<>() : Collections.emptyList();
@@ -217,7 +224,7 @@ public class HttpJimuEngine {
 
             switch (target) {
                 case BODY -> body = outputTarget;
-                case HEADER -> headers = ensureStringMap(outputTarget, "HEADER", stepIndex);
+                case HEADER -> headers = toCaseInsensitiveHeaders(ensureStringMap(outputTarget, "HEADER", stepIndex));
                 case QUERY -> queryParams = ensureStringMap(outputTarget, "QUERY", stepIndex);
                 case FORM -> {
                     if (body instanceof Map<?, ?> map) {
@@ -379,7 +386,7 @@ public class HttpJimuEngine {
         }
         Object responseBody = parseMaybeJson(detail.getResponseBody());
         Map<String, String> responseHeaders = detail.getResponseHeaders() != null
-                ? new LinkedHashMap<>(detail.getResponseHeaders()) : new LinkedHashMap<>();
+                ? toCaseInsensitiveHeaders(detail.getResponseHeaders()) : toCaseInsensitiveHeaders(Collections.emptyMap());
         Map<String, Object> responseStatus = new LinkedHashMap<>();
         responseStatus.put("status", detail.getResponseStatus());
 
@@ -408,7 +415,7 @@ public class HttpJimuEngine {
             if (target == StepTarget.RESPONSE_BODY) {
                 responseBody = outputTarget;
             } else if (target == StepTarget.RESPONSE_HEADER) {
-                responseHeaders = ensureStringMap(outputTarget, "RESPONSE_HEADER", stepIndex);
+                responseHeaders = toCaseInsensitiveHeaders(ensureStringMap(outputTarget, "RESPONSE_HEADER", stepIndex));
             } else {
                 responseStatus = ensureObjectMap(outputTarget, "RESPONSE_STATUS", stepIndex);
             }
@@ -539,6 +546,71 @@ public class HttpJimuEngine {
             stringMap.put(entry.getKey(), entry.getValue() == null ? null : String.valueOf(entry.getValue()));
         }
         return stringMap;
+    }
+
+    private Map<String, String> toCaseInsensitiveHeaders(Map<String, String> source) {
+        LinkedCaseInsensitiveMap<String> headers = new LinkedCaseInsensitiveMap<>();
+        if (source != null) {
+            headers.putAll(source);
+        }
+        return headers;
+    }
+
+    private Map<String, String> toStringMap(Object value) {
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        rawMap.forEach((key, item) -> result.put(String.valueOf(key), item == null ? null : String.valueOf(item)));
+        return result;
+    }
+
+    private Object mergeBodyInjection(Object body, Object injected) {
+        if (!(injected instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
+            return body;
+        }
+        Map<String, Object> injectMap = ensureObjectMap(rawMap, "INJECT_BODY", 0);
+        if (body == null) {
+            return new LinkedHashMap<>(injectMap);
+        }
+        if (body instanceof Map<?, ?>) {
+            Map<String, Object> bodyMap = ensureObjectMap(body, "BODY", 0);
+            deepMerge(bodyMap, injectMap);
+            return bodyMap;
+        }
+        return body;
+    }
+
+    private Object mergeRawInjection(Object body, Object injected) {
+        if (injected == null) {
+            return body;
+        }
+        return String.valueOf(injected);
+    }
+
+    private Object mergeFormInjection(HttpJimuConfig config, Object body, Object injected) {
+        if (!(injected instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
+            return body;
+        }
+        if (!StrUtil.equalsAny(config.getBodyType(), "form-data", "x-www-form-urlencoded")) {
+            return body;
+        }
+        Map<String, Object> injectMap = ensureObjectMap(rawMap, "INJECT_FORM", 0);
+        Map<String, Object> bodyMap = body instanceof Map<?, ?> ? ensureObjectMap(body, "FORM", 0) : new LinkedHashMap<>();
+        deepMerge(bodyMap, injectMap);
+        return bodyMap;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void deepMerge(Map<String, Object> target, Map<String, Object> source) {
+        source.forEach((key, value) -> {
+            Object existing = target.get(key);
+            if (existing instanceof Map<?, ?> existingMap && value instanceof Map<?, ?> sourceMap) {
+                deepMerge((Map<String, Object>) existingMap, ensureObjectMap(sourceMap, "MERGE", 0));
+                return;
+            }
+            target.put(key, value);
+        });
     }
 
     private Map<String, Object> ensureObjectMap(Object target, String targetName, int stepIndex) {

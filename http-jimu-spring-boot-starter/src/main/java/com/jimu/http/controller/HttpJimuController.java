@@ -162,6 +162,10 @@ public class HttpJimuController {
             if (methodError != null) {
                 return Result.error(methodError);
             }
+            String exposedError = HttpJimuConfigSupport.validateAndNormalizeExposedApi(config);
+            if (exposedError != null) {
+                return Result.error(exposedError);
+            }
             String placeholderError = validateConfigPlaceholders(config);
             if (placeholderError != null) {
                 return Result.error(placeholderError);

@@ -11,11 +11,14 @@ import com.jimu.http.engine.model.ExecuteDetail;
 import com.jimu.http.engine.model.PreviewDetail;
 import com.jimu.http.entity.HttpJimuConfig;
 import com.jimu.http.mapper.HttpJimuConfigMapper;
+import com.jimu.http.service.event.HttpJimuExposedApiRefreshEvent;
+import com.jimu.http.service.event.HttpJimuExposedApiRemoveEvent;
 import com.jimu.http.support.HttpJimuConfigSupport;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,7 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
     private final HttpJimuEngine engine;
     private final HttpJimuScheduler jimuScheduler;
     private final JimuProperties jimuProperties;
+    private final ApplicationEventPublisher eventPublisher;
     private final JimuCacheProvider fallbackCacheProvider = new MemoryJimuCacheProvider();
 
     @Autowired(required = false)
@@ -68,6 +72,10 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
         if (methodError != null) {
             throw new IllegalArgumentException(methodError);
         }
+        String exposedError = HttpJimuConfigSupport.validateAndNormalizeExposedApi(entity);
+        if (exposedError != null) {
+            throw new IllegalArgumentException(exposedError);
+        }
         if (entity != null && entity.getCronConfig() != null) {
             entity.setCronConfig(entity.getCronConfig().trim());
         }
@@ -93,6 +101,17 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
                 }
             }
         }
+        if (entity != null && Boolean.TRUE.equals(entity.getExposeApi())) {
+            long count = this.count(new LambdaQueryWrapper<HttpJimuConfig>()
+                    .eq(HttpJimuConfig::getExposeApi, true)
+                    .eq(HttpJimuConfig::getExposedPath, entity.getExposedPath())
+                    .eq(HttpJimuConfig::getExposedMethod, entity.getExposedMethod())
+                    .ne(entity.getId() != null, HttpJimuConfig::getId, entity.getId()));
+            if (count > 0) {
+                throw new IllegalArgumentException("Exposed api already exists: "
+                        + entity.getExposedMethod() + " " + entity.getExposedPath());
+            }
+        }
 
         boolean success = super.saveOrUpdate(entity);
         if (success) {
@@ -101,6 +120,7 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
             String currentHttpId = entity != null ? entity.getHttpId() : null;
             runAfterCommitOrNow(() -> {
                 jimuScheduler.schedule(scheduledEntity);
+                eventPublisher.publishEvent(new HttpJimuExposedApiRefreshEvent(scheduledEntity));
                 evictHttpIdCache(previousHttpId);
                 evictHttpIdCache(currentHttpId);
             });
@@ -116,6 +136,7 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
         if (success) {
             runAfterCommitOrNow(() -> {
                 jimuScheduler.cancel(id.toString());
+                eventPublisher.publishEvent(new HttpJimuExposedApiRemoveEvent(id.toString()));
                 if (old != null) {
                     evictHttpIdCache(old.getHttpId());
                 }
@@ -132,6 +153,13 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
         HttpJimuConfig config = getByHttpId(httpId);
         if (config == null) {
             throw new RuntimeException("HTTP Config not found: " + httpId);
+        }
+        return callWithDetail(config, params);
+    }
+
+    public ExecuteDetail callWithDetail(HttpJimuConfig config, Map<String, Object> params) {
+        if (config == null) {
+            throw new RuntimeException("HTTP Config not found");
         }
         return engine.executeWithDetail(config, params);
     }
@@ -160,6 +188,16 @@ public class HttpJimuService extends ServiceImpl<HttpJimuConfigMapper, HttpJimuC
         }
         cache().put(CACHE_NAME_HTTP_ID, httpId, config, jimuProperties.getCache().getHttpIdTtlMs());
         return config;
+    }
+
+    public HttpJimuConfig getByExposedPathAndMethod(String exposedPath, String method) {
+        if (exposedPath == null || exposedPath.isBlank() || method == null || method.isBlank()) {
+            return null;
+        }
+        return this.getOne(new LambdaQueryWrapper<HttpJimuConfig>()
+                .eq(HttpJimuConfig::getExposeApi, true)
+                .eq(HttpJimuConfig::getExposedPath, exposedPath)
+                .eq(HttpJimuConfig::getExposedMethod, method.toUpperCase()));
     }
 
     public void evictHttpIdCache(String httpId) {

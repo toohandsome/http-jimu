@@ -221,11 +221,11 @@ class HttpJimuControllerTest {
 
         ExecuteDetail detail = new ExecuteDetail();
         detail.setResponseBody("ok");
-        when(httpJimuService.callWithDetail(any(), any())).thenReturn(detail);
+        when(httpJimuService.callWithDetail(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(detail);
         Result<ExecuteDetail> testResult = controller.testCall("h1", Map.of());
         assertEquals("ok", testResult.getData().getResponseBody());
 
-        doThrow(new RuntimeException("test fail")).when(httpJimuService).callWithDetail(any(), any());
+        doThrow(new RuntimeException("test fail")).when(httpJimuService).callWithDetail(org.mockito.ArgumentMatchers.anyString(), any());
         Result<ExecuteDetail> testFail = controller.testCall("h1", Map.of());
         assertEquals(1100, testFail.getCode());
     }

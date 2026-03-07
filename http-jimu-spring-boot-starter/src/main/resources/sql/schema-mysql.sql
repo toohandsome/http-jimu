@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
     proxy_host VARCHAR(255) NULL COMMENT '代理主机',
     proxy_port INT NULL COMMENT '代理端口',
     proxy_type VARCHAR(20) NULL COMMENT '代理类型(HTTP/SOCKS)',
+    expose_api TINYINT(1) NULL DEFAULT 0 COMMENT '是否暴露为Spring入站接口',
+    exposed_path VARCHAR(255) NULL COMMENT '入站接口路径',
+    exposed_method VARCHAR(10) NULL COMMENT '入站接口HTTP方法',
+    exposed_param_type VARCHAR(20) NULL COMMENT '入站接口参数提取模式',
+    exposed_mapping_config LONGTEXT NULL COMMENT '入站接口自定义映射配置',
     retry_max_attempts INT NULL COMMENT '业务级HTTP状态码重试次数',
     retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表',
     create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -37,6 +42,11 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
 
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_max_attempts INT NULL COMMENT '业务级HTTP状态码重试次数';
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS expose_api TINYINT(1) NULL DEFAULT 0 COMMENT '是否暴露为Spring入站接口';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_path VARCHAR(255) NULL COMMENT '入站接口路径';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_method VARCHAR(10) NULL COMMENT '入站接口HTTP方法';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_param_type VARCHAR(20) NULL COMMENT '入站接口参数提取模式';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_mapping_config LONGTEXT NULL COMMENT '入站接口自定义映射配置';
 
 CREATE TABLE IF NOT EXISTS http_jimu_job_log (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',

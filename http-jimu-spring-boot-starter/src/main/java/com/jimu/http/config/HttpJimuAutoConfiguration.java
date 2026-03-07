@@ -7,6 +7,7 @@ import com.jimu.http.cache.JimuCacheProvider;
 import com.jimu.http.cache.MemoryJimuCacheProvider;
 import com.jimu.http.cache.RedisJimuCacheProvider;
 import com.jimu.http.controller.HttpJimuController;
+import com.jimu.http.controller.HttpJimuExposedApiEndpoint;
 import com.jimu.http.engine.HttpJimuEngine;
 import com.jimu.http.engine.HttpJimuScheduler;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
@@ -17,6 +18,7 @@ import com.jimu.http.engine.step.ScriptStepProcessor;
 import com.jimu.http.engine.step.SignStepProcessor;
 import com.jimu.http.engine.step.SortStepProcessor;
 import com.jimu.http.service.HttpJimuJobLogService;
+import com.jimu.http.service.HttpJimuExposedApiRegistrar;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuScriptMetaService;
 import com.jimu.http.service.HttpJimuService;
@@ -39,6 +41,7 @@ import java.sql.Connection;
 @AutoConfiguration
 @Import({
         HttpJimuController.class,
+        HttpJimuExposedApiEndpoint.class,
         HttpJimuEngine.class,
         HttpJimuScheduler.class,
         HttpJimuTransportSupport.class,
@@ -52,7 +55,8 @@ import java.sql.Connection;
         HttpJimuPoolService.class,
         HttpJimuStepService.class,
         HttpJimuJobLogService.class,
-        HttpJimuScriptMetaService.class
+        HttpJimuScriptMetaService.class,
+        HttpJimuExposedApiRegistrar.class
 })
 @MapperScan("com.jimu.http.mapper")
 public class HttpJimuAutoConfiguration {

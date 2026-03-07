@@ -11,6 +11,7 @@ import com.jimu.http.service.HttpJimuService;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -32,11 +33,15 @@ import static org.mockito.Mockito.when;
 
 class HttpJimuServiceTest {
 
+    private static ApplicationEventPublisher eventPublisher() {
+        return mock(ApplicationEventPublisher.class);
+    }
+
     @Test
     void shouldScheduleEnabledConfigsOnInit() {
         HttpJimuEngine engine = mock(HttpJimuEngine.class);
         HttpJimuScheduler scheduler = mock(HttpJimuScheduler.class);
-        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties(), eventPublisher()));
 
         HttpJimuConfig c1 = new HttpJimuConfig();
         c1.setId("1");
@@ -55,7 +60,7 @@ class HttpJimuServiceTest {
 
     @Test
     void shouldRejectInvalidCronBeforeSaveOrUpdate() {
-        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         HttpJimuConfig c = new HttpJimuConfig();
         c.setEnableJob(true);
         c.setCronConfig("invalid");
@@ -66,7 +71,7 @@ class HttpJimuServiceTest {
     @Test
     void shouldCallEngineWithDetail() {
         HttpJimuEngine engine = mock(HttpJimuEngine.class);
-        HttpJimuService service = spy(new HttpJimuService(engine, mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(engine, mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         HttpJimuConfig c = new HttpJimuConfig();
         c.setHttpId("h1");
         doReturn(c).when(service).getByHttpId("h1");
@@ -80,7 +85,7 @@ class HttpJimuServiceTest {
 
     @Test
     void shouldThrowWhenConfigNotFound() {
-        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         doReturn(null).when(service).getByHttpId("missing");
         RuntimeException ex = assertThrows(RuntimeException.class, () -> service.callWithDetail("missing", Map.of()));
         assertTrue(ex.getMessage().contains("not found"));
@@ -89,7 +94,7 @@ class HttpJimuServiceTest {
     @Test
     void shouldPreviewThroughEngine() {
         HttpJimuEngine engine = mock(HttpJimuEngine.class);
-        HttpJimuService service = spy(new HttpJimuService(engine, mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(engine, mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         HttpJimuConfig c = new HttpJimuConfig();
         c.setHttpId("h2");
         doReturn(c).when(service).getByHttpId("h2");
@@ -103,7 +108,7 @@ class HttpJimuServiceTest {
 
     @Test
     void shouldCallReturnBody() {
-        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         ExecuteDetail detail = new ExecuteDetail();
         detail.setResponseBody("body");
         doReturn(detail).when(service).callWithDetail(eq("h3"), any());
@@ -112,7 +117,7 @@ class HttpJimuServiceTest {
 
     @Test
     void shouldUseCacheInGetByHttpId() {
-        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         HttpJimuConfig c = new HttpJimuConfig();
         c.setHttpId("cache-id");
         doReturn(c).when(service).getOne(any());
@@ -127,13 +132,13 @@ class HttpJimuServiceTest {
 
     @Test
     void shouldReturnNullWhenHttpIdBlank() {
-        HttpJimuService service = new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties());
+        HttpJimuService service = new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher());
         assertNull(service.getByHttpId(" "));
     }
 
     @Test
     void shouldEvictAndClearCache() {
-        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(mock(HttpJimuEngine.class), mock(HttpJimuScheduler.class), new JimuProperties(), eventPublisher()));
         HttpJimuConfig c = new HttpJimuConfig();
         c.setHttpId("h4");
         doReturn(c).when(service).getOne(any());
@@ -153,7 +158,7 @@ class HttpJimuServiceTest {
     void shouldNotScheduleWhenSaveOrUpdateReturnsFalse() {
         HttpJimuEngine engine = mock(HttpJimuEngine.class);
         HttpJimuScheduler scheduler = mock(HttpJimuScheduler.class);
-        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties(), eventPublisher()));
         HttpJimuConfigMapper mapper = mock(HttpJimuConfigMapper.class);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
 
@@ -174,7 +179,7 @@ class HttpJimuServiceTest {
     void shouldRemoveByIdAndCancelScheduleWhenMapperSuccess() {
         HttpJimuEngine engine = mock(HttpJimuEngine.class);
         HttpJimuScheduler scheduler = mock(HttpJimuScheduler.class);
-        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties()));
+        HttpJimuService service = spy(new HttpJimuService(engine, scheduler, new JimuProperties(), eventPublisher()));
         HttpJimuConfigMapper mapper = mock(HttpJimuConfigMapper.class);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
 

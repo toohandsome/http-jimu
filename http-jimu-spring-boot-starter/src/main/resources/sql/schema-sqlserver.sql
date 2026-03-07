@@ -28,6 +28,11 @@ BEGIN
         proxy_host VARCHAR(255) NULL,
         proxy_port INT NULL,
         proxy_type VARCHAR(20) NULL,
+        expose_api BIT NULL CONSTRAINT df_http_jimu_config_expose_api DEFAULT 0,
+        exposed_path VARCHAR(255) NULL,
+        exposed_method VARCHAR(10) NULL,
+        exposed_param_type VARCHAR(20) NULL,
+        exposed_mapping_config VARCHAR(MAX) NULL,
         retry_max_attempts INT NULL,
         retry_on_http_status VARCHAR(255) NULL,
         create_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_config_create_time DEFAULT GETDATE(),
@@ -45,6 +50,36 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'retry_on_http_status')
 BEGIN
     ALTER TABLE http_jimu_config ADD retry_on_http_status VARCHAR(255) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'expose_api')
+BEGIN
+    ALTER TABLE http_jimu_config ADD expose_api BIT NULL CONSTRAINT df_http_jimu_config_expose_api_alter DEFAULT 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'exposed_path')
+BEGIN
+    ALTER TABLE http_jimu_config ADD exposed_path VARCHAR(255) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'exposed_method')
+BEGIN
+    ALTER TABLE http_jimu_config ADD exposed_method VARCHAR(10) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'exposed_param_type')
+BEGIN
+    ALTER TABLE http_jimu_config ADD exposed_param_type VARCHAR(20) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'exposed_mapping_config')
+BEGIN
+    ALTER TABLE http_jimu_config ADD exposed_mapping_config VARCHAR(MAX) NULL;
 END
 GO
 

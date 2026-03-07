@@ -36,9 +36,10 @@
                     <div style="font-size: 10px; color: #909399; margin-top: 5px;">{{ scope.row.cronConfig || '-' }}</div>
                 </template>
             </el-table-column>
-            <el-table-column label="操作" width="300">
+            <el-table-column label="操作" width="360">
                 <template #default="scope">
                     <el-button size="small" @click="showEditDialog(scope.row)">编辑</el-button>
+                    <el-button size="small" type="primary" plain @click="showPublishDialog(scope.row)">发布</el-button>
                     <el-button size="small" type="warning" @click="showScheduleDialog(scope.row)">定时</el-button>
                     <el-button size="small" type="info" @click="showLogDialog(scope.row)">日志</el-button>
                     <el-button size="small" type="success" @click="showTestDialog(scope.row)">测试</el-button>
@@ -285,11 +286,11 @@
 
                 <el-tabs v-model="activeTab" type="border-card">
                     <!-- Postman 风格基配置 -->
-                    <el-tab-pane label="参数" name="params">
-                        <el-table :data="paramList" size="small" border>
+                    <el-tab-pane label="查询参数" name="params">
+                        <el-table :data="queryParamList" size="small" border>
                             <el-table-column label="键" width="220">
                                 <template #default="scope">
-                                    <el-input v-model="scope.row.key" placeholder="参数名" @input="ensureEmptyRow(paramList)"></el-input>
+                                    <el-input v-model="scope.row.key" placeholder="参数名" @input="ensureEmptyRow(queryParamList)"></el-input>
                                 </template>
                             </el-table-column>
                             <el-table-column label="值">
@@ -299,7 +300,7 @@
                             </el-table-column>
                             <el-table-column label="操作" width="80" align="center">
                                 <template #default="scope">
-                                    <el-button v-if="scope.$index < paramList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="paramList.splice(scope.$index, 1)">-</el-button>
+                                    <el-button v-if="scope.$index < queryParamList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="queryParamList.splice(scope.$index, 1)">-</el-button>
                                 </template>
                             </el-table-column>
                         </el-table>
@@ -499,6 +500,113 @@
             <template #footer>
                 <el-button @click="dialogVisible = false">取消</el-button>
                 <el-button type="primary" @click="saveConfig">保存配置</el-button>
+            </template>
+        </el-dialog>
+
+        <el-dialog v-model="publishVisible" :title="`发布接口 - ${publishForm.name || publishForm.httpId || ''}`" width="78%">
+            <el-form :model="publishForm" label-width="110px">
+                <div style="padding: 12px 14px; background: #f7f9fc; border-radius: 8px; margin-bottom: 16px;">
+                    <el-form-item label="启用对外接口" style="margin-bottom: 12px;">
+                        <el-switch v-model="publishForm.exposeApi"></el-switch>
+                    </el-form-item>
+                    <template v-if="publishForm.exposeApi">
+                        <el-row :gutter="20">
+                            <el-col :span="8">
+                                <el-form-item label="接口方法">
+                                    <el-select v-model="publishForm.exposedMethod" style="width: 100%">
+                                        <el-option v-for="m in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']" :key="m" :label="m" :value="m"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="16">
+                                <el-form-item label="接口路径">
+                                    <el-input v-model="publishForm.exposedPath" placeholder="/jimu-open/orders/{id}"></el-input>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+                        <el-form-item label="参数形式">
+                            <el-select v-model="publishForm.exposedParamType" style="width: 260px">
+                                <el-option label="AUTO" value="AUTO"></el-option>
+                                <el-option label="自定义映射" value="CUSTOM"></el-option>
+                            </el-select>
+                        </el-form-item>
+                        <div v-if="publishForm.exposedParamType === 'AUTO'" class="placeholder-tips">
+                            AUTO 模式下：路径变量进入 `path.*`，查询串进入 `query.*`，JSON 请求体进入 `body.*`，请求头进入 `header.*`。
+                        </div>
+                        <template v-else>
+                            <div class="placeholder-tips" style="margin-bottom: 10px;">
+                                自定义模式下，按来源类型整组映射。比如选择 `query -> json`，会把外部接口全部 query 参数按原 key 整体写入真实请求 JSON；`path` 会按路径变量名作为 key 写入目标；`raw` 只能映射到 `raw`。
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <el-button size="small" type="primary" plain @click="exposedMappingList.push({ sourceType: 'QUERY', targetType: 'BODY' })">新增映射</el-button>
+                            </div>
+                            <el-table :data="exposedMappingList" size="small" border>
+                                <el-table-column label="对外入参" width="220">
+                                    <template #default="scope">
+                                        <el-select v-model="scope.row.sourceType" style="width: 100%" @change="handleMappingSourceTypeChange(scope.row)">
+                                                <el-option label="path" value="PATH"></el-option>
+                                                <el-option label="query" value="QUERY"></el-option>
+                                                <el-option label="json" value="JSON"></el-option>
+                                                <el-option label="header" value="HEADER"></el-option>
+                                                <el-option label="form" value="FORM"></el-option>
+                                                <el-option label="raw" value="RAW"></el-option>
+                                        </el-select>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="映射到真实请求" width="220">
+                                    <template #default="scope">
+                                        <el-select v-model="scope.row.targetType" style="width: 100%" @change="ensureExposedMappingEmptyRow()">
+                                            <el-option
+                                                v-for="type in availableMappingTargetTypes(scope.row.sourceType)"
+                                                :key="type"
+                                                :label="type === 'BODY' ? 'json' : type.toLowerCase()"
+                                                :value="type">
+                                            </el-option>
+                                        </el-select>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="操作" width="80" align="center">
+                                    <template #default="scope">
+                                        <el-button v-if="scope.$index < exposedMappingList.length - 1" type="danger" size="small" circle @click="exposedMappingList.splice(scope.$index, 1)">-</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </template>
+                    </template>
+                </div>
+
+                <div style="padding: 12px 14px; background: #fbfbfd; border-radius: 8px;">
+                    <div style="font-weight: 600; margin-bottom: 10px;">Context注入</div>
+                    <div class="placeholder-tips" style="margin-bottom: 10px;">
+                        配置入参如何写入执行 context。`source` 可填写 `query.userId`、`path.id`、`body.orderNo`、`header.X-Token`；留空时默认按 `key` 同名取值。
+                    </div>
+                    <el-table :data="contextParamList" size="small" border>
+                        <el-table-column label="Context键" width="180">
+                            <template #default="scope">
+                                <el-input v-model="scope.row.key" placeholder="例如 userId" @input="ensureContextParamEmptyRow()"></el-input>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="来源" width="240">
+                            <template #default="scope">
+                                <el-input v-model="scope.row.source" placeholder="例如 query.userId" @input="ensureContextParamEmptyRow()"></el-input>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="默认值">
+                            <template #default="scope">
+                                <el-input v-model="scope.row.defaultValue" placeholder="可选默认值" @input="ensureContextParamEmptyRow()"></el-input>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="80" align="center">
+                            <template #default="scope">
+                                <el-button v-if="scope.$index < contextParamList.length - 1 || scope.row.key || scope.row.source || scope.row.defaultValue" type="danger" size="small" circle @click="contextParamList.splice(scope.$index, 1)">-</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="publishVisible = false">取消</el-button>
+                <el-button type="primary" @click="savePublishConfig">保存</el-button>
             </template>
         </el-dialog>
 
