@@ -19,6 +19,8 @@ import com.jimu.http.engine.step.SignStepProcessor;
 import com.jimu.http.engine.step.SortStepProcessor;
 import com.jimu.http.service.HttpJimuJobLogService;
 import com.jimu.http.service.HttpJimuExposedApiRegistrar;
+import com.jimu.http.service.HttpJimuGroupService;
+import com.jimu.http.service.HttpJimuImportExportService;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuScriptMetaService;
 import com.jimu.http.service.HttpJimuService;
@@ -52,7 +54,9 @@ import java.sql.Connection;
         AddFixedStepProcessor.class,
         ScriptStepProcessor.class,
         HttpJimuService.class,
+        HttpJimuGroupService.class,
         HttpJimuPoolService.class,
+        HttpJimuImportExportService.class,
         HttpJimuStepService.class,
         HttpJimuJobLogService.class,
         HttpJimuScriptMetaService.class,

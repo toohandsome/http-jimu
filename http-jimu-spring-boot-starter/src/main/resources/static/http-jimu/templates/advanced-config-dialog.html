@@ -1,0 +1,50 @@
+﻿<el-dialog v-model="advancedConfigVisible" title="更多配置" width="620px">
+            <el-form :model="form" label-width="140px">
+                <el-form-item label="连接失败重试">
+                    <el-select v-model="form.retryOnConnectionFailure" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="HTTP重定向">
+                    <el-select v-model="form.followRedirects" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="SSL重定向">
+                    <el-select v-model="form.followSslRedirects" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option :value="true" label="开启"></el-option>
+                        <el-option :value="false" label="关闭"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="状态码重试次数">
+                    <el-input-number v-model="form.retryMaxAttempts" :min="0" :step="1" style="width: 220px;"></el-input-number>
+                </el-form-item>
+                <el-form-item label="重试状态码">
+                    <el-input v-model="form.retryOnHttpStatus" placeholder="例如 502,503,504"></el-input>
+                </el-form-item>
+                <el-form-item label="代理类型">
+                    <el-select v-model="form.proxyType" clearable placeholder="留空表示继承" style="width: 220px;">
+                        <el-option value="HTTP" label="HTTP"></el-option>
+                        <el-option value="SOCKS" label="SOCKS"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="代理主机">
+                    <el-input v-model="form.proxyHost" placeholder="例如 127.0.0.1"></el-input>
+                </el-form-item>
+                <el-form-item label="代理端口">
+                    <el-input-number v-model="form.proxyPort" :min="1" :max="65535" :step="1" style="width: 220px;"></el-input-number>
+                </el-form-item>
+                <div class="placeholder-tips">
+                    留空表示继承连接池或默认客户端配置。
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="advancedConfigVisible = false">关闭</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 测试弹窗 -->
+        
+

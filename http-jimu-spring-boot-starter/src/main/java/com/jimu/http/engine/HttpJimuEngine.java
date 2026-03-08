@@ -20,11 +20,13 @@ import com.jimu.http.engine.step.StepProcessor;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
 import com.jimu.http.engine.support.JimuExpressionResolver;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuGroup;
 import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
 import com.jimu.http.model.HttpStep;
 import com.jimu.http.model.enums.StepTarget;
 import com.jimu.http.model.enums.StepType;
+import com.jimu.http.service.HttpJimuGroupService;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuStepService;
 import com.jimu.http.support.HttpJimuConfigSupport;
@@ -63,6 +65,9 @@ public class HttpJimuEngine {
 
     @Autowired(required = false)
     private HttpJimuPoolService poolService;
+
+    @Autowired(required = false)
+    private HttpJimuGroupService groupService;
 
     private final JimuProperties jimuProperties;
 
@@ -156,6 +161,29 @@ public class HttpJimuEngine {
         return poolService.getById(config.getPoolId());
     }
 
+    private HttpJimuGroup resolveGroup(HttpJimuConfig config) {
+        if (groupService == null || config == null || StrUtil.isBlank(config.getGroupId())) {
+            return null;
+        }
+        return groupService.getById(config.getGroupId());
+    }
+
+    private List<HttpStep> resolveEffectiveSteps(HttpJimuConfig config) {
+        List<HttpStep> merged = new ArrayList<>();
+        merged.addAll(resolveSteps(config != null ? config.getStepsConfig() : null));
+
+        HttpJimuGroup group = resolveGroup(config);
+        if (group != null) {
+            merged.addAll(resolveSteps(group.getStepsConfig()));
+        }
+
+        HttpJimuPool pool = resolvePool(config);
+        if (pool != null) {
+            merged.addAll(resolveSteps(pool.getStepsConfig()));
+        }
+        return merged;
+    }
+
     public PreviewDetail previewWithSteps(HttpJimuConfig config, Map<String, Object> inputParams) {
         String methodError = HttpJimuConfigSupport.validateAndNormalizeMethod(config);
         if (methodError != null) {
@@ -185,7 +213,7 @@ public class HttpJimuEngine {
         body = mergeRawInjection(body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_RAW_KEY));
         body = mergeBodyInjection(body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_BODY_KEY));
         body = mergeFormInjection(config, body, safeInputParams.get(HttpJimuExposedRequestResolver.INJECT_FORM_KEY));
-        List<HttpStep> steps = resolveSteps(config.getStepsConfig());
+        List<HttpStep> steps = resolveEffectiveSteps(config);
 
         List<StepTrace> traces = includeStepTraces ? new ArrayList<>() : Collections.emptyList();
         int stepIndex = 0;

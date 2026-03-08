@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 public class HttpJimuConfig {
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
+    private String groupId;
     private String httpId;
     private String name;
     private String url;

@@ -4,6 +4,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'http_jimu_config')
 BEGIN
     CREATE TABLE http_jimu_config (
         id VARCHAR(64) NOT NULL PRIMARY KEY,
+        group_id VARCHAR(64) NULL,
         http_id VARCHAR(64) NOT NULL UNIQUE,
         name NVARCHAR(100) NULL,
         url NVARCHAR(1000) NOT NULL,
@@ -83,9 +84,21 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'group_id')
+BEGIN
+    ALTER TABLE http_jimu_config ADD group_id VARCHAR(64) NULL;
+END
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'idx_http_jimu_config_enable_job')
 BEGIN
     CREATE INDEX idx_http_jimu_config_enable_job ON http_jimu_config(enable_job);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('http_jimu_config') AND name = 'idx_http_jimu_config_group_id')
+BEGIN
+    CREATE INDEX idx_http_jimu_config_group_id ON http_jimu_config(group_id);
 END
 GO
 
@@ -141,6 +154,7 @@ BEGIN
     CREATE TABLE http_jimu_pool (
         id VARCHAR(64) NOT NULL PRIMARY KEY,
         name NVARCHAR(100) NOT NULL UNIQUE,
+        steps_config NVARCHAR(MAX) NULL,
         max_idle_connections INT NOT NULL CONSTRAINT df_http_jimu_pool_max_idle_connections DEFAULT 5,
         keep_alive_duration BIGINT NOT NULL CONSTRAINT df_http_jimu_pool_keep_alive_duration DEFAULT 300000,
         connect_timeout INT NOT NULL CONSTRAINT df_http_jimu_pool_connect_timeout DEFAULT 10000,
@@ -160,6 +174,26 @@ BEGIN
         proxy_type VARCHAR(20) NULL,
         create_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_pool_create_time DEFAULT GETDATE(),
         update_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_pool_update_time DEFAULT GETDATE()
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('http_jimu_pool') AND name = 'steps_config')
+BEGIN
+    ALTER TABLE http_jimu_pool ADD steps_config NVARCHAR(MAX) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'http_jimu_group')
+BEGIN
+    CREATE TABLE http_jimu_group (
+        id VARCHAR(64) NOT NULL PRIMARY KEY,
+        code VARCHAR(64) NOT NULL UNIQUE,
+        name NVARCHAR(100) NOT NULL,
+        description NVARCHAR(500) NULL,
+        steps_config NVARCHAR(MAX) NULL,
+        create_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_group_create_time DEFAULT GETDATE(),
+        update_time DATETIME2 NOT NULL CONSTRAINT df_http_jimu_group_update_time DEFAULT GETDATE()
     );
 END
 GO

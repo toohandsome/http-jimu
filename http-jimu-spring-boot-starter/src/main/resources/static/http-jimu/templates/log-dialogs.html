@@ -1,0 +1,37 @@
+﻿<el-dialog v-model="logVisible" :title="'执行日志 - ' + currentConfigName" width="80%">
+            <el-table :data="jobLogs" size="small" border height="500px">
+                <el-table-column prop="createTime" label="执行时间" width="160"></el-table-column>
+                <el-table-column prop="status" label="状态" width="100">
+                    <template #default="scope">
+                        <el-tag :type="scope.row.status === 'SUCCESS' ? 'success' : 'danger'" size="small">
+                            {{scope.row.status}}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="duration" label="耗时(ms)" width="100"></el-table-column>
+                <el-table-column prop="outputResult" label="返回结果" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="errorMsg" label="错误信息" show-overflow-tooltip></el-table-column>
+                <el-table-column label="操作" width="80">
+                    <template #default="scope">
+                        <el-button type="text" size="small" @click="viewLogDetail(scope.row)">详情</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <!-- 日志详情 -->
+        <el-dialog v-model="logDetailVisible" title="日志详情" width="60%">
+            <el-descriptions :column="1" border>
+                <el-descriptions-item label="状态">{{currentLog.status}}</el-descriptions-item>
+                <el-descriptions-item label="耗时">{{currentLog.duration}} ms</el-descriptions-item>
+                <el-descriptions-item label="执行时间">{{currentLog.createTime}}</el-descriptions-item>
+                <el-descriptions-item label="入参">{{currentLog.inputParams}}</el-descriptions-item>
+                <el-descriptions-item label="返回结果">
+                    <pre style="white-space: pre-wrap; word-break: break-all;">{{currentLog.outputResult}}</pre>
+                </el-descriptions-item>
+                <el-descriptions-item v-if="currentLog.errorMsg" label="错误信息">
+                    <span style="color: #f56c6c;">{{currentLog.errorMsg}}</span>
+                </el-descriptions-item>
+            </el-descriptions>
+        </el-dialog>
+

@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS http_jimu_config (
     id VARCHAR(64) NOT NULL COMMENT '主键ID',
+    group_id VARCHAR(64) NULL COMMENT '所属分组ID',
     http_id VARCHAR(64) NOT NULL COMMENT '接口唯一标识',
     name VARCHAR(100) NULL COMMENT '接口名称',
     url VARCHAR(1000) NOT NULL COMMENT '请求URL',
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS http_jimu_config (
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_http_jimu_config_http_id (http_id),
-    KEY idx_http_jimu_config_enable_job (enable_job)
+    KEY idx_http_jimu_config_enable_job (enable_job),
+    KEY idx_http_jimu_config_group_id (group_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP积木接口配置表';
 
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS retry_max_attempts INT NULL COMMENT '业务级HTTP状态码重试次数';
@@ -47,6 +49,7 @@ ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_path VARCHAR(255) 
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_method VARCHAR(10) NULL COMMENT '入站接口HTTP方法';
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_param_type VARCHAR(20) NULL COMMENT '入站接口参数提取模式';
 ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS exposed_mapping_config LONGTEXT NULL COMMENT '入站接口自定义映射配置';
+ALTER TABLE http_jimu_config ADD COLUMN IF NOT EXISTS group_id VARCHAR(64) NULL COMMENT '所属分组ID';
 
 CREATE TABLE IF NOT EXISTS http_jimu_job_log (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -83,6 +86,7 @@ CREATE TABLE IF NOT EXISTS http_jimu_step (
 CREATE TABLE IF NOT EXISTS http_jimu_pool (
     id VARCHAR(64) NOT NULL COMMENT '主键ID',
     name VARCHAR(100) NOT NULL COMMENT '连接池名称',
+    steps_config LONGTEXT NULL COMMENT '连接池公共步骤JSON',
     max_idle_connections INT NOT NULL DEFAULT 5 COMMENT '最大空闲连接数',
     keep_alive_duration BIGINT NOT NULL DEFAULT 300000 COMMENT '连接保活时长毫秒',
     connect_timeout INT NOT NULL DEFAULT 10000 COMMENT '连接超时毫秒',
@@ -108,6 +112,19 @@ CREATE TABLE IF NOT EXISTS http_jimu_pool (
 
 ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_max_attempts INT NOT NULL DEFAULT 0 COMMENT '业务级HTTP状态码重试次数';
 ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS retry_on_http_status VARCHAR(255) NULL COMMENT '触发重试的HTTP状态码列表';
+ALTER TABLE http_jimu_pool ADD COLUMN IF NOT EXISTS steps_config LONGTEXT NULL COMMENT '连接池公共步骤JSON';
+
+CREATE TABLE IF NOT EXISTS http_jimu_group (
+    id VARCHAR(64) NOT NULL COMMENT '主键ID',
+    code VARCHAR(64) NOT NULL COMMENT '分组编码',
+    name VARCHAR(100) NOT NULL COMMENT '分组名称',
+    description VARCHAR(500) NULL COMMENT '分组描述',
+    steps_config LONGTEXT NULL COMMENT '分组公共步骤JSON',
+    create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_http_jimu_group_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP积木接口分组表';
 
 -- ShedLock table for JDBC distributed lock fallback
 CREATE TABLE IF NOT EXISTS jimu_shedlock (

@@ -1,4 +1,31 @@
-﻿        const app = createApp({
+﻿(async () => {
+    const templateFiles = [
+        './http-jimu/templates/dashboard.html',
+        './http-jimu/templates/group-dialog.html',
+        './http-jimu/templates/pool-dialogs.html',
+        './http-jimu/templates/step-library-dialog.html',
+        './http-jimu/templates/step-edit-dialog.html',
+        './http-jimu/templates/edit-dialog.html',
+        './http-jimu/templates/publish-dialog.html',
+        './http-jimu/templates/library-select-dialog.html',
+        './http-jimu/templates/interceptor-editor-dialog.html',
+        './http-jimu/templates/interceptor-library-dialog.html',
+        './http-jimu/templates/advanced-config-dialog.html',
+        './http-jimu/templates/test-dialog.html',
+        './http-jimu/templates/schedule-dialog.html',
+        './http-jimu/templates/log-dialogs.html'
+    ];
+    const templateResponses = await Promise.all(templateFiles.map((path) => fetch(path)));
+    const failedTemplate = templateResponses.find((response) => !response.ok);
+    if (failedTemplate) {
+        document.getElementById('app').innerHTML = '<div style="padding: 24px; color: #f56c6c;">页面模板加载失败</div>';
+        throw new Error('Failed to load template fragment: ' + failedTemplate.url);
+    }
+    const templateParts = await Promise.all(templateResponses.map((response) => response.text()));
+    const appTemplate = '<div class="app-container">\n' + templateParts.join('\n') + '\n</div>';
+
+    const app = createApp({
+        template: appTemplate,
             setup() {
                 const configs = ref([]);
                 const dialogVisible = ref(false);
@@ -28,6 +55,8 @@
                 const jobLogs = ref([]);
                 const currentConfigName = ref('');
                 const currentLog = ref({});
+                const selectedGroupKey = ref('all');
+                const searchKeyword = ref('');
                 
                 // 积木库相关
                 const stepLibraryVisible = ref(false);
@@ -36,6 +65,17 @@
                 const stepLibrary = ref([]);
                 const stepForm = ref({ id: '', code: '', name: '', type: 'SCRIPT', target: 'BODY', description: '', configJson: '', scriptContent: '' });
                 let stepScriptEditor = null;
+                const interceptorEditorVisible = ref(false);
+                const interceptorLibrarySelectVisible = ref(false);
+                const interceptorEditorTitle = ref('');
+                const interceptorSteps = ref([]);
+                const interceptorTarget = ref('');
+                const interceptorEditors = {};
+                const groupDialogVisible = ref(false);
+                const groupEditVisible = ref(false);
+                const savedGroupList = ref([]);
+                const groupList = ref([]);
+                const groupForm = ref({ id: '', code: '', name: '', description: '', stepsConfig: '[]' });
 
                 const commonHeaders = [
                     'Content-Type', 'Authorization', 'Accept', 'User-Agent', 
@@ -66,6 +106,7 @@
                 
                 const form = ref({
                     id: '',
+                    groupId: '',
                     httpId: '',
                     name: '',
                     url: '',
@@ -117,6 +158,7 @@
                 const poolForm = ref({
                     id: '',
                     name: '',
+                    stepsConfig: '[]',
                     maxIdleConnections: 5,
                     keepAliveDuration: 300000,
                     connectTimeout: 10000,
@@ -144,18 +186,326 @@
                     }
                 };
 
+                const fetchGroups = async () => {
+                    const res = await axios.get('http-jimu-api/groups');
+                    if (res.data.code === 1000) {
+                        savedGroupList.value = res.data.data || [];
+                    }
+                };
+
+                const resolveGroupName = (groupId) => {
+                    const found = savedGroupList.value.find((item) => item.id === groupId);
+                    return found ? found.name : '-';
+                };
+
+                const groupTreeData = Vue.computed(() => {
+                    const groupedCount = new Map();
+                    let ungroupedCount = 0;
+                    (configs.value || []).forEach((item) => {
+                        if (item && item.groupId) {
+                            groupedCount.set(item.groupId, (groupedCount.get(item.groupId) || 0) + 1);
+                        } else {
+                            ungroupedCount++;
+                        }
+                    });
+                    return [{
+                        id: 'all',
+                        label: `全部接口 (${configs.value.length})`,
+                        children: [
+                            { id: '__ungrouped__', label: `未分组 (${ungroupedCount})` },
+                            ...savedGroupList.value.filter((group) => !!group.id).map((group) => ({
+                                id: group.id,
+                                label: `${group.name} (${groupedCount.get(group.id) || 0})`
+                            }))
+                        ]
+                    }];
+                });
+
+                const filteredConfigs = Vue.computed(() => {
+                    const keyword = (searchKeyword.value || '').trim().toLowerCase();
+                    return (configs.value || []).filter((item) => {
+                        if (!item) return false;
+                        const matchGroup = selectedGroupKey.value === 'all'
+                            ? true
+                            : selectedGroupKey.value === '__ungrouped__'
+                                ? !item.groupId
+                                : item.groupId === selectedGroupKey.value;
+                        if (!matchGroup) {
+                            return false;
+                        }
+                        if (!keyword) {
+                            return true;
+                        }
+                        const haystack = [
+                            item.httpId,
+                            item.name,
+                            item.url,
+                            item.method,
+                            resolveGroupName(item.groupId)
+                        ].join(' ').toLowerCase();
+                        return haystack.includes(keyword);
+                    });
+                });
+
+                const handleGroupNodeClick = (node) => {
+                    selectedGroupKey.value = node && node.id ? node.id : 'all';
+                };
+
+                const summarizeStepsConfig = (stepsConfig) => {
+                    try {
+                        const parsed = JSON.parse(stepsConfig || '[]');
+                        return Array.isArray(parsed) ? `${parsed.length} 个` : '0 个';
+                    } catch (e) {
+                        return '格式错误';
+                    }
+                };
+
+                const disposeInterceptorEditors = () => {
+                    Object.keys(interceptorEditors).forEach((key) => {
+                        if (interceptorEditors[key]) {
+                            unbindEditorLsp(interceptorEditors[key]);
+                            interceptorEditors[key].dispose();
+                            delete interceptorEditors[key];
+                        }
+                    });
+                };
+
+                const fetchStepsForSharedUse = async () => {
+                    const res = await axios.get('http-jimu-api/steps');
+                    if (res.data.code === 1000) {
+                        stepLibrary.value = res.data.data;
+                    }
+                };
+
+                const initInterceptorEditor = (index, code) => {
+                    setTimeout(async () => {
+                        const container = document.getElementById('interceptor-editor-' + index);
+                        if (container) {
+                            const monaco = await initMonaco();
+                            if (interceptorEditors[index]) {
+                                unbindEditorLsp(interceptorEditors[index]);
+                                interceptorEditors[index].dispose();
+                            }
+                            interceptorEditors[index] = monaco.editor.create(container, {
+                                value: code || '// Example:\n// headers.put("X-Trace", "demo");\n// return headers;',
+                                language: 'java',
+                                theme: 'vs',
+                                automaticLayout: true,
+                                minimap: { enabled: false },
+                                scrollBeyondLastLine: false,
+                                fontSize: 14,
+                                fixedOverflowWidgets: true,
+                                renderControlCharacters: true
+                            });
+                            bindEditorLsp(interceptorEditors[index], `interceptor-step-${index}`);
+                            setTimeout(() => interceptorEditors[index].layout(), 200);
+                        }
+                    }, 300);
+                };
+
+                const loadInterceptorSteps = (stepsConfig) => {
+                    disposeInterceptorEditors();
+                    let parsed = [];
+                    try {
+                        parsed = JSON.parse(stepsConfig || '[]');
+                    } catch (e) {
+                        parsed = [];
+                    }
+                    interceptorSteps.value = (Array.isArray(parsed) ? parsed : []).map((s, idx) => {
+                        if (!s.config) s.config = {};
+                        if (s.type === 'ADD_FIXED' || s.stepCode) s.config_json = JSON.stringify(s.config || {});
+                        if (s.type === 'SCRIPT') initInterceptorEditor(idx, (s.config && s.config.script) ? s.config.script : '');
+                        return s;
+                    });
+                };
+
+                const showInterceptorEditor = async (target) => {
+                    await fetchStepsForSharedUse();
+                    interceptorTarget.value = target;
+                    interceptorEditorTitle.value = target === 'group'
+                        ? `拦截器（分组公共步骤） - ${groupForm.value.name || groupForm.value.code || '未命名分组'}`
+                        : `拦截器（连接池公共步骤） - ${poolForm.value.name || '未命名连接池'}`;
+                    loadInterceptorSteps(target === 'group' ? groupForm.value.stepsConfig : poolForm.value.stepsConfig);
+                    interceptorEditorVisible.value = true;
+                };
+
+                const addInterceptorStep = (type) => {
+                    const step = { type, config: {}, enableLog: true, target: 'BODY' };
+                    const idx = interceptorSteps.value.length;
+                    if (type === 'SIGN') {
+                        step.config = { algorithm: 'MD5', targetField: 'sign', salt: '' };
+                    } else if (type === 'ENCRYPT') {
+                        step.config = { algorithm: 'HMAC_SHA256', fields: '', secret: '', iv: '', outputEncoding: 'BASE64', overwrite: true, targetField: '' };
+                    } else if (type === 'ADD_FIXED') {
+                        step.config_json = '{}';
+                    } else if (type === 'SCRIPT') {
+                        step.config = { script: '' };
+                        initInterceptorEditor(idx, '');
+                    }
+                    interceptorSteps.value.push(step);
+                };
+
+                const syncInterceptorStepJson = (step) => {
+                    try { step.config = JSON.parse(step.config_json); } catch (e) {}
+                };
+
+                const validateInterceptorScriptStep = async (index) => {
+                    const editor = interceptorEditors[index];
+                    const code = editor ? editor.getValue() : ((interceptorSteps.value[index] && interceptorSteps.value[index].config && interceptorSteps.value[index].config.script) || '');
+                    try {
+                        const res = await axios.post('http-jimu-api/validate-script', { script: code });
+                        if (res.data.code !== 1000) {
+                            ElementPlus.ElMessage.error(res.data.msg || '语法校验失败');
+                            return;
+                        }
+                        const data = res.data.data || {};
+                        if (editor && monacoInstance) {
+                            monaco.editor.setModelMarkers(editor.getModel(), 'script-validate', []);
+                        }
+                        if (data.valid) {
+                            ElementPlus.ElMessage.success('语法校验通过');
+                            return;
+                        }
+                        const line = Number(data.line || 1);
+                        const column = Number(data.column || 1);
+                        if (editor && monacoInstance) {
+                            const model = editor.getModel();
+                            monaco.editor.setModelMarkers(model, 'script-validate', [{
+                                startLineNumber: line,
+                                startColumn: column,
+                                endLineNumber: line,
+                                endColumn: column + 1,
+                                message: data.message || '语法错误',
+                                severity: monaco.MarkerSeverity.Error
+                            }]);
+                            editor.revealLineInCenter(line);
+                            editor.setPosition({ lineNumber: line, column });
+                            editor.focus();
+                        }
+                        ElementPlus.ElMessage.error(`语法错误（第${line}行，第${column}列）：${data.message || ''}`);
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('语法校验失败：' + (e.message || e));
+                    }
+                };
+
+                const addInterceptorStepFromLibrary = async () => {
+                    await fetchStepsForSharedUse();
+                    interceptorLibrarySelectVisible.value = true;
+                };
+
+                const selectInterceptorLibraryStep = (row) => {
+                    const step = {
+                        type: row.type,
+                        target: row.target,
+                        stepCode: row.code,
+                        config_json: row.configJson || '{}',
+                        config: {},
+                        enableLog: true
+                    };
+                    try { step.config = JSON.parse(step.config_json); } catch (e) {}
+                    interceptorSteps.value.push(step);
+                    interceptorLibrarySelectVisible.value = false;
+                };
+
+                const saveInterceptorEditor = () => {
+                    interceptorSteps.value.forEach((s, idx) => {
+                        if ((s.type === 'ADD_FIXED' || s.stepCode) && s.config_json) {
+                            try { s.config = JSON.parse(s.config_json); } catch (e) {}
+                        }
+                        if (s.type === 'SCRIPT' && interceptorEditors[idx]) {
+                            s.config.script = interceptorEditors[idx].getValue();
+                        }
+                    });
+                    const json = JSON.stringify(interceptorSteps.value);
+                    if (interceptorTarget.value === 'group') {
+                        groupForm.value.stepsConfig = json;
+                    } else if (interceptorTarget.value === 'pool') {
+                        poolForm.value.stepsConfig = json;
+                    }
+                    interceptorEditorVisible.value = false;
+                };
+
+                const showGroupManagement = async () => {
+                    await fetchGroups();
+                    groupList.value = (savedGroupList.value || []).map((item) => ({ ...item }));
+                    ensureGroupEmptyRow();
+                    groupDialogVisible.value = true;
+                };
+
+                const ensureGroupEmptyRow = () => {
+                    if (groupList.value.length === 0) {
+                        groupList.value.push({ id: null, code: '', name: '', description: '', stepsConfig: '[]' });
+                        return;
+                    }
+                    const last = groupList.value[groupList.value.length - 1];
+                    if (last.code || last.name || last.description) {
+                        groupList.value.push({ id: null, code: '', name: '', description: '', stepsConfig: '[]' });
+                    }
+                };
+
+                const showGroupEdit = (row) => {
+                    groupForm.value = row || { id: null, code: '', name: '', description: '', stepsConfig: '[]' };
+                    showInterceptorEditor('group');
+                };
+
+                const saveGroup = async (row) => {
+                    const target = row || groupForm.value;
+                    if (!target.code) {
+                        ElementPlus.ElMessage.error('分组编码不能为空');
+                        return;
+                    }
+                    if (!target.name) {
+                        ElementPlus.ElMessage.error('分组名称不能为空');
+                        return;
+                    }
+                    try {
+                        const res = await axios.post('http-jimu-api/groups/save', target);
+                        if (res.data.code === 1000) {
+                            ElementPlus.ElMessage.success('保存成功');
+                            await fetchGroups();
+                            groupList.value = (savedGroupList.value || []).map((item) => ({ ...item }));
+                            ensureGroupEmptyRow();
+                            await fetchConfigs();
+                            return;
+                        }
+                        ElementPlus.ElMessage.error(res.data.msg || '保存失败');
+                    } catch (e) {
+                        const msg = e.response && e.response.data && e.response.data.msg
+                            ? e.response.data.msg
+                            : (e.message || '保存失败');
+                        ElementPlus.ElMessage.error(msg);
+                    }
+                };
+
+                const deleteGroup = async (row) => {
+                    if (!row.id) {
+                        groupList.value = groupList.value.filter((item) => item !== row);
+                        ensureGroupEmptyRow();
+                        return;
+                    }
+                    await ElementPlus.ElMessageBox.confirm('确定删除该分组吗？删除后接口会解除分组关联。');
+                    const res = await axios.delete(`http-jimu-api/groups/delete/${row.id}`);
+                    if (res.data.code === 1000) {
+                        ElementPlus.ElMessage.success('删除成功');
+                        await fetchGroups();
+                        groupList.value = (savedGroupList.value || []).map((item) => ({ ...item }));
+                        ensureGroupEmptyRow();
+                        await fetchConfigs();
+                    }
+                };
+
                 const showPoolManagement = async () => {
                     await fetchPools();
+                    ensurePoolEmptyRow();
                     poolDialogVisible.value = true;
                 };
 
-                const showPoolEdit = (row) => {
-                    if (row) {
-                        poolForm.value = { ...row };
-                    } else {
-                        poolForm.value = {
+                const ensurePoolEmptyRow = () => {
+                    if (poolList.value.length === 0) {
+                        poolList.value.push({
                             id: null,
                             name: '',
+                            stepsConfig: '[]',
                             maxIdleConnections: 5,
                             keepAliveDuration: 300000,
                             connectTimeout: 10000,
@@ -173,26 +523,63 @@
                             proxyHost: '',
                             proxyPort: null,
                             proxyType: 'HTTP'
-                        };
+                        });
+                        return;
                     }
+                    const last = poolList.value[poolList.value.length - 1];
+                    if (last.name || last.proxyHost || last.retryOnHttpStatus) {
+                        poolList.value.push({
+                            id: null,
+                            name: '',
+                            stepsConfig: '[]',
+                            maxIdleConnections: 5,
+                            keepAliveDuration: 300000,
+                            connectTimeout: 10000,
+                            readTimeout: 10000,
+                            writeTimeout: 10000,
+                            callTimeout: 0,
+                            retryOnConnectionFailure: true,
+                            followRedirects: true,
+                            followSslRedirects: true,
+                            retryMaxAttempts: 0,
+                            retryOnHttpStatus: '',
+                            maxRequests: 64,
+                            maxRequestsPerHost: 5,
+                            pingInterval: 0,
+                            proxyHost: '',
+                            proxyPort: null,
+                            proxyType: 'HTTP'
+                        });
+                    }
+                };
+
+                const showPoolEdit = (row) => {
+                    poolForm.value = row;
+                    showInterceptorEditor('pool');
+                };
+
+                const showPoolDetail = (row) => {
+                    poolForm.value = row;
                     poolEditVisible.value = true;
                 };
 
-                const savePool = async () => {
-                    if (!poolForm.value.name) {
-                        ElementPlus.ElMessage.error('Pool Name is required');
+                const savePool = async (row) => {
+                    const target = row || poolForm.value;
+                    if (!target.name) {
+                        ElementPlus.ElMessage.error('连接池名称不能为空');
                         return;
                     }
-                    poolForm.value.retryOnHttpStatus = (poolForm.value.retryOnHttpStatus || '').trim();
-                    if (!poolForm.value.proxyHost) {
-                        poolForm.value.proxyPort = null;
+                    target.retryOnHttpStatus = (target.retryOnHttpStatus || '').trim();
+                    if (!target.proxyHost) {
+                        target.proxyPort = null;
                     }
                     try {
-                        const res = await axios.post('http-jimu-api/pools/save', poolForm.value);
+                        const res = await axios.post('http-jimu-api/pools/save', target);
                         if (res.data.code === 1000) {
                             ElementPlus.ElMessage.success('保存成功');
+                            await fetchPools();
+                            ensurePoolEmptyRow();
                             poolEditVisible.value = false;
-                            fetchPools();
                             return;
                         }
                         ElementPlus.ElMessage.error(res.data.msg || '保存失败');
@@ -205,11 +592,17 @@
                 };
 
                 const deletePool = async (row) => {
+                    if (!row.id) {
+                        poolList.value = poolList.value.filter((item) => item !== row);
+                        ensurePoolEmptyRow();
+                        return;
+                    }
                     await ElementPlus.ElMessageBox.confirm('确删除该连接池吗？');
                     const res = await axios.delete(`http-jimu-api/pools/delete/${row.id}`);
                     if (res.data.code === 1000) {
                         ElementPlus.ElMessage.success('删除成功');
-                        fetchPools();
+                        await fetchPools();
+                        ensurePoolEmptyRow();
                     }
                 };
 
@@ -276,6 +669,53 @@
                 const fetchConfigs = async () => {
                     const res = await axios.get('http-jimu-api/list');
                     if (res.data.code === 1000) configs.value = res.data.data;
+                };
+
+                const exportConfigs = async () => {
+                    try {
+                        const res = await axios.get('http-jimu-api/export');
+                        if (res.data.code !== 1000) {
+                            ElementPlus.ElMessage.error(res.data.msg || '导出失败');
+                            return;
+                        }
+                        const blob = new Blob([JSON.stringify(res.data.data, null, 2)], { type: 'application/json;charset=utf-8' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.href = url;
+                        link.download = `http-jimu-export-${Date.now()}.json`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('导出失败：' + (e.message || e));
+                    }
+                };
+
+                const importConfigs = () => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'application/json,.json';
+                    input.onchange = async (event) => {
+                        const file = event.target.files && event.target.files[0];
+                        if (!file) return;
+                        try {
+                            const text = await file.text();
+                            const payload = JSON.parse(text);
+                            const res = await axios.post('http-jimu-api/import', payload);
+                            if (res.data.code === 1000) {
+                                ElementPlus.ElMessage.success('导入成功');
+                                await fetchGroups();
+                                await fetchPools();
+                                await fetchConfigs();
+                                return;
+                            }
+                            ElementPlus.ElMessage.error(res.data.msg || '导入失败');
+                        } catch (e) {
+                            ElementPlus.ElMessage.error('导入失败：' + (e.message || e));
+                        }
+                    };
+                    input.click();
                 };
                 const bindEditorLsp = () => {};
                 const unbindEditorLsp = () => {};
@@ -442,9 +882,11 @@
                 const showEditDialog = async (row) => {
                     activeTab.value = 'params';
                     await fetchPools();
+                    await fetchGroups();
                     if (row) {
                         form.value = {
                             ...row,
+                            groupId: row.groupId || '',
                             poolId: row.poolId || '',
                             connectTimeout: row.connectTimeout,
                             readTimeout: row.readTimeout,
@@ -503,6 +945,7 @@
                     } else {
                         form.value = {
                             id: null,
+                            groupId: '',
                             httpId: '',
                             name: '',
                             url: '',
@@ -956,11 +1399,15 @@
 
                 onMounted(async () => {
                     await loadScriptMeta();
+                    await fetchGroups();
+                    await fetchPools();
                     await fetchConfigs();
                 });
 
                 return {
-                    configs, dialogVisible, publishVisible, publishForm, advancedConfigVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, queryParamList, contextParamList, exposedMappingList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
+                    configs, filteredConfigs, groupTreeData, selectedGroupKey, searchKeyword, handleGroupNodeClick, dialogVisible, publishVisible, publishForm, advancedConfigVisible, form, steps, testVisible, testParams, testResult, testDetail, previewDetail, testLoading, headerList, queryParamList, contextParamList, exposedMappingList, bodyFormDataList, bodyUrlEncodedList, quickCron, activeTab, commonHeaders,
+                    groupDialogVisible, groupEditVisible, savedGroupList, groupList, groupForm, showGroupManagement, showGroupEdit, saveGroup, deleteGroup, ensureGroupEmptyRow, resolveGroupName, summarizeStepsConfig, exportConfigs, importConfigs,
+                    interceptorEditorVisible, interceptorLibrarySelectVisible, interceptorEditorTitle, interceptorSteps, showInterceptorEditor, addInterceptorStep, syncInterceptorStepJson, validateInterceptorScriptStep, addInterceptorStepFromLibrary, selectInterceptorLibraryStep, saveInterceptorEditor, disposeInterceptorEditors,
                     showEditDialog, showPublishDialog, addStep, saveConfig, savePublishConfig, deleteConfig, showTestDialog, runPreview, runTest, syncStepJson, validateScriptStep, handleMethodChange, handleBodyTypeChange, handleRawTypeChange, ensureEmptyRow, ensureContextParamEmptyRow, ensureExposedMappingEmptyRow, availableMappingTargetTypes, handleMappingSourceTypeChange, applyQuickCron, prettyJson, formatSnapshot,
                     showAdvancedConfigDialog,
                     scheduleVisible, scheduleForm, logVisible, logDetailVisible, jobLogs, currentConfigName, currentLog,
@@ -969,9 +1416,13 @@
                     stepLibraryVisible, stepEditVisible, librarySelectVisible, stepLibrary, stepForm, showStepLibrary, showStepEditDialog, saveStepLibraryItem, deleteStep, addStepFromLibrary, selectLibraryStep,
                     handleStepDialogOpened,
                     // Pool
-                    poolDialogVisible, poolEditVisible, poolList, poolForm, showPoolManagement, showPoolEdit, savePool, deletePool
+                    poolDialogVisible, poolEditVisible, poolList, poolForm, showPoolManagement, showPoolEdit, showPoolDetail, savePool, deletePool, ensurePoolEmptyRow
                 };
             }
         });
-        app.use(ElementPlus);
-        app.mount('#app');
+    app.use(ElementPlus);
+    app.mount('#app');
+})();
+
+
+

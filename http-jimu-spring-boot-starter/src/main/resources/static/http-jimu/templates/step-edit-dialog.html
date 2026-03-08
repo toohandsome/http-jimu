@@ -1,0 +1,65 @@
+﻿<el-dialog v-model="stepEditVisible" :title="stepForm.id ? '编辑步骤' : '新步骤'" width="70%" @opened="handleStepDialogOpened">
+            <el-form :model="stepForm" label-width="100px">
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="编码">
+                            <el-input v-model="stepForm.code" placeholder="唯一编码（例如：sign_md5）"></el-input>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="名称">
+                            <el-input v-model="stepForm.name" placeholder="步骤名称"></el-input>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="类型">
+                            <el-select v-model="stepForm.type" style="width: 100%">
+                                <el-option label="参数排序" value="SORT"></el-option>
+                                <el-option label="签名" value="SIGN"></el-option>
+                                <el-option label="加密" value="ENCRYPT"></el-option>
+                                <el-option label="添加固定参数" value="ADD_FIXED"></el-option>
+                                <el-option label="自定义脚本" value="SCRIPT"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="作用">
+                            <el-select v-model="stepForm.target" style="width: 100%">
+                                <el-option label="请求体（默认）" value="BODY"></el-option>
+                                <el-option label="请求头" value="HEADER"></el-option>
+                                <el-option label="查询参数" value="QUERY"></el-option>
+                                <el-option label="表单数据" value="FORM"></el-option>
+                                <el-option label="响应体" value="RESPONSE_BODY"></el-option>
+                                <el-option label="响应头" value="RESPONSE_HEADER"></el-option>
+                                <el-option label="响应状态" value="RESPONSE_STATUS"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-form-item label="描述">
+                    <el-input type="textarea" v-model="stepForm.description" :rows="2"></el-input>
+                </el-form-item>
+                
+                <!-- Step Specific Config -->
+                <div v-if="stepForm.type === 'SCRIPT'">
+                    <el-form-item label="脚本内">
+                        <div id="step-script-editor" class="script-editor" style="height: 400px;"></div>
+                    </el-form-item>
+                </div>
+                <div v-else>
+                    <el-form-item label="默认配置(JSON)">
+                        <el-input type="textarea" v-model="stepForm.configJson" :rows="4" placeholder='{"key": "value"}'></el-input>
+                    </el-form-item>
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="stepEditVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveStepLibraryItem">保存</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 编辑弹窗 -->
+        
+

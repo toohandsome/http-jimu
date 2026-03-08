@@ -1,0 +1,30 @@
+﻿<el-dialog v-model="scheduleVisible" title="定时任务配置" width="600px">
+            <el-form :model="scheduleForm" label-width="100px">
+                <el-form-item label="任务">
+                    <el-switch v-model="scheduleForm.enableJob"></el-switch>
+                </el-form-item>
+                <el-form-item label="Cron 表达式">
+                    <el-input v-model="scheduleForm.cronConfig" placeholder="例如：0 0 1 * * ?"></el-input>
+                </el-form-item>
+                <el-form-item label="选择">
+                    <el-radio-group v-model="quickCron" @change="applyQuickCron" size="small">
+                        <el-radio-button label="0 * * * * ?">每分</el-radio-button>
+                        <el-radio-button label="0 0 * * * ?">每小</el-radio-button>
+                        <el-radio-button label="0 0 1 * * ?">每天1</el-radio-button>
+                        <el-radio-button label="0 0 1 ? * FRI">每周</el-radio-button>
+                        <el-radio-button label="0 0 1 1 * ?">每月</el-radio-button>
+                    </el-radio-group>
+                </el-form-item>
+                <div class="placeholder-tips" style="margin-left: 100px;">
+                    定时任务将以空参数执行固定参数
+                </div>
+            </el-form>
+            <template #footer>
+                <el-button @click="scheduleVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveSchedule">保存配置</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 任务日志弹窗 -->
+        
+

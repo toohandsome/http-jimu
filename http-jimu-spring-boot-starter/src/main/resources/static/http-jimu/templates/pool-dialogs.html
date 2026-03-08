@@ -1,0 +1,97 @@
+﻿<el-dialog v-model="poolDialogVisible" title="连接池" width="80%">
+            <el-table :data="poolList" style="width: 100%" border size="small">
+                <el-table-column label="名称" width="180">
+                    <template #default="scope">
+                        <el-input v-model="scope.row.name" placeholder="连接池名称" @input="ensurePoolEmptyRow()"></el-input>
+                    </template>
+                </el-table-column>
+                <el-table-column label="拦截器（连接池公共步骤）" width="180">
+                    <template #default="scope">
+                        {{ summarizeStepsConfig(scope.row.stepsConfig) }}
+                    </template>
+                </el-table-column>
+                <el-table-column label="连接超时(ms)" width="130">
+                    <template #default="scope">
+                        <el-input-number v-model="scope.row.connectTimeout" :min="100" :step="100"></el-input-number>
+                    </template>
+                </el-table-column>
+                <el-table-column label="读取超时(ms)" width="130">
+                    <template #default="scope">
+                        <el-input-number v-model="scope.row.readTimeout" :min="100" :step="100"></el-input-number>
+                    </template>
+                </el-table-column>
+                <el-table-column label="写入超时(ms)" width="130">
+                    <template #default="scope">
+                        <el-input-number v-model="scope.row.writeTimeout" :min="100" :step="100"></el-input-number>
+                    </template>
+                </el-table-column>
+                <el-table-column label="总超时(ms)" width="130">
+                    <template #default="scope">
+                        <el-input-number v-model="scope.row.callTimeout" :min="0" :step="100"></el-input-number>
+                    </template>
+                </el-table-column>
+                <el-table-column label="操作" width="220">
+                    <template #default="scope">
+                        <el-button size="small" type="primary" plain @click="savePool(scope.row)">保存</el-button>
+                        <el-button size="small" plain @click="showPoolDetail(scope.row)">详情</el-button>
+                        <el-button size="small" type="warning" plain @click="showPoolEdit(scope.row)">拦截器</el-button>
+                        <el-button size="small" type="danger" @click="deletePool(scope.row)">删除</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <el-dialog v-model="poolEditVisible" title="连接池详情" width="55%">
+            <el-form :model="poolForm" label-width="160px">
+                <el-form-item label="空闲连接数">
+                    <el-input-number v-model="poolForm.maxIdleConnections" :min="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="保持连接(ms)">
+                    <el-input-number v-model="poolForm.keepAliveDuration" :min="1000" :step="1000"></el-input-number>
+                </el-form-item>
+                <el-form-item label="状态码重试次数">
+                    <el-input-number v-model="poolForm.retryMaxAttempts" :min="0" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="重试状态码">
+                    <el-input v-model="poolForm.retryOnHttpStatus" placeholder="例如 502,503,504"></el-input>
+                </el-form-item>
+                <el-form-item label="全局最大并发">
+                    <el-input-number v-model="poolForm.maxRequests" :min="1" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="单主机最大并发">
+                    <el-input-number v-model="poolForm.maxRequestsPerHost" :min="1" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="心跳间隔(ms)">
+                    <el-input-number v-model="poolForm.pingInterval" :min="0" :step="1000"></el-input-number>
+                </el-form-item>
+                <el-form-item label="连接失败重试">
+                    <el-switch v-model="poolForm.retryOnConnectionFailure"></el-switch>
+                </el-form-item>
+                <el-form-item label="跟随HTTP重定向">
+                    <el-switch v-model="poolForm.followRedirects"></el-switch>
+                </el-form-item>
+                <el-form-item label="跟随SSL重定向">
+                    <el-switch v-model="poolForm.followSslRedirects"></el-switch>
+                </el-form-item>
+                <el-form-item label="代理主机">
+                    <el-input v-model="poolForm.proxyHost" placeholder="例如 127.0.0.1"></el-input>
+                </el-form-item>
+                <el-form-item label="代理端口">
+                    <el-input-number v-model="poolForm.proxyPort" :min="1" :max="65535" :step="1"></el-input-number>
+                </el-form-item>
+                <el-form-item label="代理类型">
+                    <el-select v-model="poolForm.proxyType" style="width: 180px">
+                        <el-option label="HTTP" value="HTTP"></el-option>
+                        <el-option label="SOCKS" value="SOCKS"></el-option>
+                    </el-select>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="poolEditVisible = false">关闭</el-button>
+                <el-button type="primary" @click="savePool(poolForm)">保存</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 积木库管理弹窗-->
+        
+

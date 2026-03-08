@@ -1,0 +1,35 @@
+﻿<el-dialog v-model="groupDialogVisible" title="接口分组" width="75%">
+            <el-table :data="groupList" style="width: 100%" border size="small">
+                <el-table-column label="编码" width="180">
+                    <template #default="scope">
+                        <el-input v-model="scope.row.code" placeholder="分组编码" @input="ensureGroupEmptyRow()"></el-input>
+                    </template>
+                </el-table-column>
+                <el-table-column label="名称" width="180">
+                    <template #default="scope">
+                        <el-input v-model="scope.row.name" placeholder="分组名称" @input="ensureGroupEmptyRow()"></el-input>
+                    </template>
+                </el-table-column>
+                <el-table-column label="描述">
+                    <template #default="scope">
+                        <el-input v-model="scope.row.description" placeholder="分组描述" @input="ensureGroupEmptyRow()"></el-input>
+                    </template>
+                </el-table-column>
+                <el-table-column label="拦截器（分组公共步骤）" width="180">
+                    <template #default="scope">
+                        {{ summarizeStepsConfig(scope.row.stepsConfig) }}
+                    </template>
+                </el-table-column>
+                <el-table-column label="操作" width="220">
+                    <template #default="scope">
+                        <el-button size="small" type="primary" plain @click="saveGroup(scope.row)">保存</el-button>
+                        <el-button size="small" type="warning" plain @click="showGroupEdit(scope.row)">拦截器</el-button>
+                        <el-button size="small" type="danger" @click="deleteGroup(scope.row)">删除</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-dialog>
+
+        <!-- 连接池弹窗-->
+        
+

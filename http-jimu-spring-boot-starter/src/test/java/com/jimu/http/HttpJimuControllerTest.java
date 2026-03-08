@@ -7,10 +7,13 @@ import com.jimu.http.engine.HttpJimuEngine;
 import com.jimu.http.engine.model.ExecuteDetail;
 import com.jimu.http.engine.model.PreviewDetail;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuGroup;
 import com.jimu.http.entity.HttpJimuJobLog;
 import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
 import com.jimu.http.model.Result;
+import com.jimu.http.service.HttpJimuGroupService;
+import com.jimu.http.service.HttpJimuImportExportService;
 import com.jimu.http.service.HttpJimuJobLogService;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuScriptMetaService;
@@ -42,8 +45,10 @@ class HttpJimuControllerTest {
     private HttpJimuService httpJimuService;
     private HttpJimuJobLogService jobLogService;
     private HttpJimuStepService stepService;
+    private HttpJimuGroupService groupService;
     private HttpJimuPoolService poolService;
     private HttpJimuScriptMetaService scriptMetaService;
+    private HttpJimuImportExportService importExportService;
     private HttpJimuEngine engine;
     private HttpJimuController controller;
 
@@ -52,10 +57,28 @@ class HttpJimuControllerTest {
         httpJimuService = mock(HttpJimuService.class);
         jobLogService = mock(HttpJimuJobLogService.class);
         stepService = mock(HttpJimuStepService.class);
+        groupService = mock(HttpJimuGroupService.class);
         poolService = mock(HttpJimuPoolService.class);
         scriptMetaService = mock(HttpJimuScriptMetaService.class);
+        importExportService = mock(HttpJimuImportExportService.class);
         engine = mock(HttpJimuEngine.class);
-        controller = new HttpJimuController(httpJimuService, jobLogService, stepService, poolService, engine, scriptMetaService);
+        controller = new HttpJimuController(httpJimuService, jobLogService, stepService, groupService, poolService, engine, scriptMetaService, importExportService);
+    }
+
+    @Test
+    void shouldHandleGroupApis() {
+        HttpJimuGroup group = new HttpJimuGroup();
+        group.setId("g1");
+        group.setCode("order");
+        group.setStepsConfig("[]");
+        when(groupService.list()).thenReturn(List.of(group));
+        when(groupService.saveOrUpdate(any())).thenReturn(true);
+        when(groupService.removeById("g1")).thenReturn(true);
+
+        assertEquals(1, controller.listGroups().getData().size());
+        Result<Boolean> saved = controller.saveGroup(group);
+        assertEquals(1000, saved.getCode());
+        assertTrue(controller.deleteGroup("g1").getData());
     }
 
     @Test

@@ -14,9 +14,11 @@ import com.jimu.http.engine.step.StepContext;
 import com.jimu.http.engine.support.HttpJimuTransportSupport;
 import com.jimu.http.engine.support.JimuExpressionResolver;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuGroup;
 import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
 import com.jimu.http.service.HttpJimuPoolService;
+import com.jimu.http.service.HttpJimuGroupService;
 import com.jimu.http.service.HttpJimuStepService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +59,7 @@ class HttpJimuEngineCoreTest {
     private ApplicationContext applicationContext;
     private HttpJimuTransportSupport transportSupport;
     private HttpJimuPoolService poolService;
+    private HttpJimuGroupService groupService;
     private SignStepProcessor signProcessor;
     private ScriptStepProcessor scriptProcessor;
     private JimuProperties jimuProperties;
@@ -74,6 +77,7 @@ class HttpJimuEngineCoreTest {
         applicationContext = mock(ApplicationContext.class);
         transportSupport = mock(HttpJimuTransportSupport.class);
         poolService = mock(HttpJimuPoolService.class);
+        groupService = mock(HttpJimuGroupService.class);
 
         when(applicationContext.getBeanDefinitionNames()).thenReturn(new String[0]);
         when(transportSupport.mergeUrlQueryParams(anyString(), any(Map.class)))
@@ -85,6 +89,7 @@ class HttpJimuEngineCoreTest {
         ReflectionTestUtils.setField(engine, "stepService", stepService);
         ReflectionTestUtils.setField(engine, "transportSupport", transportSupport);
         ReflectionTestUtils.setField(engine, "poolService", poolService);
+        ReflectionTestUtils.setField(engine, "groupService", groupService);
 
         signProcessor = new SignStepProcessor(expressionResolver);
         scriptProcessor = new ScriptStepProcessor(jimuProperties);
@@ -329,8 +334,38 @@ class HttpJimuEngineCoreTest {
 
         ExecuteDetail detail = engine.executeWithDetail(config, Map.of());
         assertEquals(200, detail.getResponseStatus());
-        verify(poolService, times(2)).getById("pool-1");
+        verify(poolService, times(3)).getById("pool-1");
         verify(transportSupport, times(2)).sendRequestWithDetail(any(), anyString(), anyString(), any(Map.class), any());
+    }
+
+    @Test
+    void shouldApplyConfigThenGroupThenPoolSteps() {
+        HttpJimuGroup group = new HttpJimuGroup();
+        group.setId("group-1");
+        group.setStepsConfig("[{\"type\":\"SCRIPT\",\"target\":\"HEADER\",\"config\":{\"script\":\"headers.put('X-Group','group'); return headers\"},\"enableLog\":false}]");
+        when(groupService.getById("group-1")).thenReturn(group);
+
+        HttpJimuPool pool = new HttpJimuPool();
+        pool.setId("pool-1");
+        pool.setStepsConfig("[{\"type\":\"SCRIPT\",\"target\":\"HEADER\",\"config\":{\"script\":\"headers.put('X-Pool','pool'); return headers\"},\"enableLog\":false}]");
+        when(poolService.getById("pool-1")).thenReturn(pool);
+
+        HttpJimuConfig config = new HttpJimuConfig();
+        config.setHttpId("h-order");
+        config.setGroupId("group-1");
+        config.setPoolId("pool-1");
+        config.setMethod("POST");
+        config.setUrl("https://x.test/api");
+        config.setHeaders("[]");
+        config.setQueryParams("[]");
+        config.setBodyType("raw");
+        config.setBodyConfig("{\"a\":\"b\"}");
+        config.setStepsConfig("[{\"type\":\"SCRIPT\",\"target\":\"HEADER\",\"config\":{\"script\":\"headers.put('X-Config','config'); return headers\"},\"enableLog\":false}]");
+
+        PreviewDetail detail = engine.previewWithSteps(config, Map.of());
+        assertEquals("config", detail.getRequestHeaders().get("X-Config"));
+        assertEquals("group", detail.getRequestHeaders().get("X-Group"));
+        assertEquals("pool", detail.getRequestHeaders().get("X-Pool"));
     }
 
     @Test

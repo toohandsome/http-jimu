@@ -1,0 +1,12 @@
+﻿<el-dialog v-model="interceptorLibrarySelectVisible" title="从步骤库选择拦截器步骤" width="60%">
+            <el-table :data="stepLibrary" style="width: 100%; cursor: pointer;" border @row-click="selectInterceptorLibraryStep">
+                <el-table-column prop="code" label="编码" width="150"></el-table-column>
+                <el-table-column prop="name" label="名称" width="200"></el-table-column>
+                <el-table-column prop="type" label="类型" width="100"></el-table-column>
+                <el-table-column prop="target" label="作用对象" width="100"></el-table-column>
+                <el-table-column prop="description" label="描述"></el-table-column>
+            </el-table>
+        </el-dialog>
+
+        
+

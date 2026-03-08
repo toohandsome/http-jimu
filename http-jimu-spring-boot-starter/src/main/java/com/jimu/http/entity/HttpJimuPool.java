@@ -105,6 +105,11 @@ public class HttpJimuPool implements Serializable {
      */
     private String proxyType;
 
+    /**
+     * Pool-level shared interceptor chain.
+     */
+    private String stepsConfig;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

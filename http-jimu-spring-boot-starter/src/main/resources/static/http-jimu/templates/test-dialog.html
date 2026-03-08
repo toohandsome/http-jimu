@@ -1,0 +1,69 @@
+﻿<el-dialog v-model="testVisible" title="测试调用" width="78%">
+            <el-form label-width="100px">
+                <el-form-item label="输入参数 (JSON)">
+                    <el-input type="textarea" v-model="testParams" :rows="5" placeholder='{"id": 1, "name": "test"}'></el-input>
+                </el-form-item>
+                <div style="display: flex; gap: 8px;">
+                    <el-button @click="runPreview" :loading="testLoading" style="flex: 1;">预览请求</el-button>
+                    <el-button type="primary" @click="runTest" :loading="testLoading" style="flex: 1;">执行调用</el-button>
+                </div>
+                <div v-if="previewDetail" style="margin-top: 15px;">
+                    <div class="debug-block">
+                        <div class="debug-title">预览请求</div>
+                        <div class="debug-meta"><b>{{previewDetail.requestMethod}}</b> {{previewDetail.requestUrl}}</div>
+                        <div class="debug-title">请求头</div>
+                        <pre class="debug-pre">{{ prettyJson(previewDetail.requestHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">请求体</div>
+                        <pre class="debug-pre">{{ previewDetail.requestBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block" v-if="previewDetail.stepTraces && previewDetail.stepTraces.length">
+                        <div class="debug-title">步骤调试</div>
+                        <div class="step-trace" v-for="trace in previewDetail.stepTraces" :key="'preview-' + trace.stepIndex">
+                            <div class="debug-meta">步骤{{trace.stepIndex}} - {{trace.stepType}} ({{trace.target}})</div>
+                            <div class="debug-title">输入</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.inputSnapshot) }}</pre>
+                            <div class="debug-title" style="margin-top: 8px;">输出</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.outputSnapshot) }}</pre>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="testDetail" style="margin-top: 15px;">
+                    <div class="debug-block">
+                        <div class="debug-title">请求信息</div>
+                        <div class="debug-meta"><b>{{testDetail.requestMethod}}</b> {{testDetail.requestUrl}}</div>
+                        <div class="debug-title">请求头</div>
+                        <pre class="debug-pre">{{ prettyJson(testDetail.requestHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">请求体</div>
+                        <pre class="debug-pre">{{ testDetail.requestBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block">
+                        <div class="debug-title">响应信息</div>
+                        <div class="debug-meta">
+                            状态码: <b>{{testDetail.responseStatus}}</b>
+                            <span style="margin-left: 12px;">耗时: <b>{{testDetail.durationMs}} ms</b></span>
+                        </div>
+                        <div class="debug-title">响应头</div>
+                        <pre class="debug-pre">{{ prettyJson(testDetail.responseHeaders) }}</pre>
+                        <div class="debug-title" style="margin-top: 10px;">响应体</div>
+                        <pre class="debug-pre">{{ testDetail.responseBody || '（空）' }}</pre>
+                    </div>
+                    <div class="debug-block" v-if="testDetail.stepTraces && testDetail.stepTraces.length">
+                        <div class="debug-title">步骤调试</div>
+                        <div class="step-trace" v-for="trace in testDetail.stepTraces" :key="'exec-' + trace.stepIndex">
+                            <div class="debug-meta">步骤{{trace.stepIndex}} - {{trace.stepType}} ({{trace.target}})</div>
+                            <div class="debug-title">输入</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.inputSnapshot) }}</pre>
+                            <div class="debug-title" style="margin-top: 8px;">输出</div>
+                            <pre class="debug-pre">{{ formatSnapshot(trace.outputSnapshot) }}</pre>
+                        </div>
+                    </div>
+                </div>
+                <div v-else-if="testResult" class="result-panel">
+                    {{testResult}}
+                </div>
+            </el-form>
+        </el-dialog>
+
+        <!-- 定时任务配置弹窗 -->
+        
+

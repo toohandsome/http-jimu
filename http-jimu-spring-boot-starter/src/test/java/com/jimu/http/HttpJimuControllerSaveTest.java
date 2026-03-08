@@ -4,6 +4,8 @@ import com.jimu.http.controller.HttpJimuController;
 import com.jimu.http.engine.HttpJimuEngine;
 import com.jimu.http.entity.HttpJimuConfig;
 import com.jimu.http.model.Result;
+import com.jimu.http.service.HttpJimuGroupService;
+import com.jimu.http.service.HttpJimuImportExportService;
 import com.jimu.http.service.HttpJimuJobLogService;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuScriptMetaService;
@@ -27,9 +29,11 @@ class HttpJimuControllerSaveTest {
                 httpJimuService,
                 mock(HttpJimuJobLogService.class),
                 mock(HttpJimuStepService.class),
+                mock(HttpJimuGroupService.class),
                 mock(HttpJimuPoolService.class),
                 mock(HttpJimuEngine.class),
-                mock(HttpJimuScriptMetaService.class)
+                mock(HttpJimuScriptMetaService.class),
+                mock(HttpJimuImportExportService.class)
         );
     }
 

@@ -1,0 +1,277 @@
+﻿<el-dialog v-model="dialogVisible" :title="form.id ? '编辑接口' : '新接口'" width="85%" top="3vh">
+            <el-form :model="form" label-width="100px">
+                <!-- 顶部基本信息 -->
+                <el-row :gutter="20" style="margin-bottom: 20px;">
+                    <el-col :span="4">
+                        <el-select v-model="form.method" @change="handleMethodChange" placeholder="请求方法">
+                            <el-option v-for="m in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']" :key="m" :label="m" :value="m"></el-option>
+                        </el-select>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-input v-model="form.url" placeholder="请输入请求 URL"></el-input>
+                    </el-col>
+                    <el-col :span="4">
+                        <el-input v-model="form.httpId" placeholder="HTTP ID（唯一）"></el-input>
+                    </el-col>
+                    <el-col :span="4">
+                        <el-input v-model="form.name" placeholder="接口名称"></el-input>
+                    </el-col>
+                </el-row>
+
+                <!-- 连接池与超时配置 -->
+                <el-row :gutter="20" style="margin-bottom: 20px; background-color: #f5f7fa; padding: 10px; border-radius: 4px;">
+                    <el-col :span="6">
+                        <el-form-item label="分组" label-width="60px" style="margin-bottom: 10px;">
+                            <el-select v-model="form.groupId" placeholder="请选择分组" clearable style="width: 100%">
+                                <el-option label="未分组" value=""></el-option>
+                                <el-option v-for="group in savedGroupList" :key="group.id" :label="group.name" :value="group.id"></el-option>
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item label="连接池" label-width="60px" style="margin-bottom: 0;">
+                            <el-select v-model="form.poolId" placeholder="请选择连接池" clearable style="width: 100%">
+                                <el-option label="配置 (不使用连接池)" value=""></el-option>
+                                <el-option v-for="pool in poolList" :key="pool.id" :label="pool.name" :value="pool.id"></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="18">
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <el-input-number v-model="form.connectTimeout" :min="100" :step="1000" placeholder="连接超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>连接</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.readTimeout" :min="100" :step="1000" placeholder="读取超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>读取</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.writeTimeout" :min="100" :step="1000" placeholder="写入超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>写入</template>
+                            </el-input-number>
+                            <el-input-number v-model="form.callTimeout" :min="0" :step="1000" placeholder="总超时(ms)" controls-position="right" style="width: 160px;">
+                                <template #prefix>总超时</template>
+                            </el-input-number>
+                            <el-button plain @click="showAdvancedConfigDialog">更多配置</el-button>
+                            <span class="placeholder-tips" style="line-height: 32px;">(单位: ms)</span>
+                        </div>
+                    </el-col>
+                </el-row>
+
+                <el-tabs v-model="activeTab" type="border-card">
+                    <!-- Postman 风格基配置 -->
+                    <el-tab-pane label="查询参数" name="params">
+                        <el-table :data="queryParamList" size="small" border>
+                            <el-table-column label="键" width="220">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.key" placeholder="参数名" @input="ensureEmptyRow(queryParamList)"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="值">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="参数值"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="80" align="center">
+                                <template #default="scope">
+                                    <el-button v-if="scope.$index < queryParamList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="queryParamList.splice(scope.$index, 1)">-</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="请求头" name="headers">
+                        <el-table :data="headerList" size="small" border>
+                            <el-table-column label="键" width="220">
+                                <template #default="scope">
+                                    <el-select v-model="scope.row.key" filterable allow-create placeholder="请求头名称" style="width: 100%" @change="ensureEmptyRow(headerList)">
+                                        <el-option v-for="h in commonHeaders" :key="h" :label="h" :value="h"></el-option>
+                                    </el-select>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="值">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="请求头值"></el-input>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="80" align="center">
+                                <template #default="scope">
+                                    <el-button v-if="scope.$index < headerList.length - 1 || scope.row.key || scope.row.value" type="danger" size="small" circle @click="headerList.splice(scope.$index, 1)">-</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="请求体" name="body">
+                        <div style="margin-bottom: 15px;">
+                            <el-radio-group v-model="form.bodyType" @change="handleBodyTypeChange">
+                                <el-radio label="none">无</el-radio>
+                                <el-radio label="form-data">form-data</el-radio>
+                                <el-radio label="x-www-form-urlencoded">x-www-form-urlencoded</el-radio>
+                                <el-radio label="raw">原始内容</el-radio>
+                            </el-radio-group>
+                            
+                            <el-select v-if="form.bodyType === 'raw'" v-model="form.bodyRawType" size="small" style="margin-left: 20px; width: 120px;" @change="handleRawTypeChange">
+                                <el-option label="文本" value="text"></el-option>
+                                <el-option label="JavaScript脚本" value="javascript"></el-option>
+                                <el-option label="JSON" value="json"></el-option>
+                                <el-option label="HTML" value="html"></el-option>
+                                <el-option label="XML" value="xml"></el-option>
+                            </el-select>
+                        </div>
+
+                        <div v-if="form.bodyType === 'none'" class="placeholder-tips" style="text-align: center; padding: 40px;">
+                            当前请求没有请求体。
+                        </div>
+
+                        <div v-if="form.bodyType === 'form-data' || form.bodyType === 'x-www-form-urlencoded'">
+                            <el-table :data="form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList" size="small" border>
+                                <el-table-column label="键" width="220">
+                                    <template #default="scope">
+                                    <el-input v-model="scope.row.key" placeholder="键" @input="ensureEmptyRow(form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList)"></el-input>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="值">
+                                    <template #default="scope">
+                                    <el-input v-model="scope.row.value" placeholder="值"></el-input>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="操作" width="80" align="center">
+                                    <template #default="scope">
+                                        <el-button v-if="scope.$index < (form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList).length - 1 || scope.row.key || scope.row.value" 
+                                                   type="danger" size="small" circle 
+                                                   @click="(form.bodyType === 'form-data' ? bodyFormDataList : bodyUrlEncodedList).splice(scope.$index, 1)">-</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </div>
+
+                        <div v-show="form.bodyType === 'raw'">
+                            <div class="placeholder-tips">Raw 请求体内容，支持占位符，例如 ${userId}。</div>
+                            <div id="body-editor" class="body-editor"></div>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- Jimu Steps -->                    <el-tab-pane label="积木步骤" name="steps">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <el-button-group>
+                                <el-button size="small" @click="addStepFromLibrary">从步骤库添加</el-button>
+                            </el-button-group>
+                            <el-dropdown @command="addStep">
+                                <el-button type="primary" size="small">新增自定义步骤</el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="SORT">参数排序 (SORT)</el-dropdown-item>
+                                        <el-dropdown-item command="SIGN">签名 (SIGN)</el-dropdown-item>
+                                        <el-dropdown-item command="ENCRYPT">加密 (ENCRYPT)</el-dropdown-item>
+                                        <el-dropdown-item command="ADD_FIXED">添加固定参数 (ADD_FIXED)</el-dropdown-item>
+                                        <el-dropdown-item command="SCRIPT">自定义脚本 (SCRIPT)</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </div>
+
+                        <div v-for="(step, index) in steps" :key="index" class="step-item">
+                            <div class="step-header">
+                                步骤 {{index + 1}}: {{step.type}} 
+                                <el-tag size="small" style="margin-left: 10px;">{{step.target || 'BODY'}}</el-tag>
+                                <span v-if="step.stepCode" style="margin-left: 10px; color: #409eff;">(引用: {{step.stepCode}})</span>
+                            </div>
+                            <el-switch v-model="step.enableLog" active-text="日志" class="step-log-switch" size="small"></el-switch>
+                            <span class="step-delete" @click="steps.splice(index, 1)">[删除]</span>
+                            
+                            <!-- Target Selector for Custom Steps -->
+                            <el-form-item label="作用对象" label-width="80px" v-if="!step.stepCode" style="margin-bottom: 10px;">
+                                <el-radio-group v-model="step.target" size="small">
+                                    <el-radio-button label="BODY">请求体</el-radio-button>
+                                    <el-radio-button label="HEADER">请求头</el-radio-button>
+                                    <el-radio-button label="QUERY">查询参数</el-radio-button>
+                                    <el-radio-button label="FORM">表单</el-radio-button>
+                                    <el-radio-button label="RESPONSE_BODY">响应体</el-radio-button>
+                                    <el-radio-button label="RESPONSE_HEADER">响应头</el-radio-button>
+                                    <el-radio-button label="RESPONSE_STATUS">响应状态</el-radio-button>
+                                </el-radio-group>
+                            </el-form-item>
+
+                            <div v-if="step.type === 'SIGN'">
+                                <el-form-item label="算法" label-width="80px">
+                                    <el-select v-model="step.config.algorithm">
+                                        <el-option label="MD5" value="MD5"></el-option>
+                                        <el-option label="SHA256" value="SHA256"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="签名字段" label-width="80px">
+                                    <el-input v-model="step.config.targetField" placeholder="签名写入的字段名"></el-input>
+                                </el-form-item>
+                                <el-form-item label="盐值" label-width="80px">
+                                    <el-input v-model="step.config.salt" placeholder="盐值或 ${placeholder}"></el-input>
+                                </el-form-item>
+                            </div>
+                            <div v-if="step.type === 'ENCRYPT'">
+                                <el-form-item label="算法" label-width="80px">
+                                    <el-select v-model="step.config.algorithm">
+                                        <el-option label="HMAC_SHA256" value="HMAC_SHA256"></el-option>
+                                        <el-option label="HMAC_SHA1" value="HMAC_SHA1"></el-option>
+                                        <el-option label="AES_ECB_PKCS5" value="AES_ECB_PKCS5"></el-option>
+                                        <el-option label="AES_CBC_PKCS5" value="AES_CBC_PKCS5"></el-option>
+                                        <el-option label="RSA_ECB_PKCS1" value="RSA_ECB_PKCS1"></el-option>
+                                        <el-option label="RSA_SHA256_SIGN" value="RSA_SHA256_SIGN"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="字段" label-width="80px">
+                                    <el-input v-model="step.config.fields" placeholder="如：field1,field2（留空=整个载荷）"></el-input>
+                                </el-form-item>
+                                <el-form-item label="密钥" label-width="80px" v-if="step.config.algorithm && (step.config.algorithm.startsWith('HMAC') || step.config.algorithm.startsWith('AES'))">
+                                    <el-input v-model="step.config.secret" type="password" show-password placeholder="HMAC/AES 密钥，支持 ${placeholder}"></el-input>
+                                </el-form-item>
+                                <el-form-item label="IV" label-width="80px" v-if="step.config.algorithm === 'AES_CBC_PKCS5'">
+                                    <el-input v-model="step.config.iv" placeholder="16字节 IV，支持 ${placeholder}"></el-input>
+                                </el-form-item>
+                                <el-form-item label="公钥" label-width="80px" v-if="step.config.algorithm === 'RSA_ECB_PKCS1'">
+                                    <el-input type="textarea" :rows="3" v-model="step.config.publicKey" placeholder="-----BEGIN PUBLIC KEY----- ..."></el-input>
+                                </el-form-item>
+                                <el-form-item label="私钥" label-width="80px" v-if="step.config.algorithm === 'RSA_SHA256_SIGN'">
+                                    <el-input type="textarea" :rows="3" v-model="step.config.privateKey" placeholder="-----BEGIN PRIVATE KEY----- ..."></el-input>
+                                </el-form-item>
+                                <el-form-item label="输出编码" label-width="80px">
+                                    <el-select v-model="step.config.outputEncoding">
+                                        <el-option label="BASE64" value="BASE64"></el-option>
+                                        <el-option label="HEX" value="HEX"></el-option>
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="覆盖原字段" label-width="80px">
+                                    <el-switch v-model="step.config.overwrite"></el-switch>
+                                </el-form-item>
+                                <el-form-item label="目标字段" label-width="80px" v-if="step.config.overwrite === false">
+                                    <el-input v-model="step.config.targetField" placeholder="可选：输出字段名前缀"></el-input>
+                                </el-form-item>
+                            </div>
+                            <div v-if="step.type === 'ADD_FIXED'">
+                                <el-input type="textarea" v-model="step.config_json" :rows="2" placeholder='{"appId": "123"}' @blur="syncStepJson(step)"></el-input>
+                            </div>
+                            <div v-if="step.type === 'SORT'">
+                                <p style="font-size: 12px; color: #909399;">按键名进行字典序排序。</p>
+                            </div>
+                            <div v-show="step.type === 'SCRIPT' && !step.stepCode">
+                                <div class="placeholder-tips">
+                                    可用变量：body（当前请求体）、context（入参上下文）、url（请求地址）、headers（请求头）、queryParams（查询参数）、redis（Redis客户端）、log（日志对象）。<br>
+                                    示例：<code>headers.put("Auth", "123"); queryParams.put("k", "v"); return body;</code>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <el-button size="small" type="primary" plain @click="validateScriptStep(index)">校验语法</el-button>
+                                </div>
+                                <div :id="'editor-' + index" class="script-editor"></div>
+                            </div>
+                            <!-- Library Step Config Override -->
+                            <div v-if="step.stepCode">
+                                <div class="placeholder-tips">覆盖默认配置（JSON）：</div>
+                                <el-input type="textarea" v-model="step.config_json" :rows="2" placeholder='{"overrideKey": "value"}' @blur="syncStepJson(step)"></el-input>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
+            </el-form>
+            <template #footer>
+                <el-button @click="dialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveConfig">保存配置</el-button>
+            </template>
+        </el-dialog>
+
+        
+

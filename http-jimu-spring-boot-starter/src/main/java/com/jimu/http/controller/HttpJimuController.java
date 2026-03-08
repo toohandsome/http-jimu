@@ -2,16 +2,20 @@ package com.jimu.http.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jimu.http.dto.HttpJimuExportBundle;
 import com.jimu.http.dto.script.BeanMetaDetail;
 import com.jimu.http.dto.script.ScriptMeta;
 import com.jimu.http.engine.HttpJimuEngine;
 import com.jimu.http.engine.model.ExecuteDetail;
 import com.jimu.http.engine.model.PreviewDetail;
 import com.jimu.http.entity.HttpJimuConfig;
+import com.jimu.http.entity.HttpJimuGroup;
 import com.jimu.http.entity.HttpJimuJobLog;
 import com.jimu.http.entity.HttpJimuPool;
 import com.jimu.http.entity.HttpJimuStep;
 import com.jimu.http.model.Result;
+import com.jimu.http.service.HttpJimuGroupService;
+import com.jimu.http.service.HttpJimuImportExportService;
 import com.jimu.http.service.HttpJimuJobLogService;
 import com.jimu.http.service.HttpJimuPoolService;
 import com.jimu.http.service.HttpJimuScriptMetaService;
@@ -48,9 +52,37 @@ public class HttpJimuController {
     private final HttpJimuService httpJimuService;
     private final HttpJimuJobLogService jobLogService;
     private final HttpJimuStepService stepService;
+    private final HttpJimuGroupService groupService;
     private final HttpJimuPoolService poolService;
     private final HttpJimuEngine engine;
     private final HttpJimuScriptMetaService scriptMetaService;
+    private final HttpJimuImportExportService importExportService;
+
+    @GetMapping("/groups")
+    public Result<List<HttpJimuGroup>> listGroups() {
+        return Result.success(groupService.list());
+    }
+
+    @PostMapping("/groups/save")
+    public Result<Boolean> saveGroup(@RequestBody HttpJimuGroup group) {
+        try {
+            if (group.getId() == null) {
+                group.setCreateTime(LocalDateTime.now());
+            }
+            group.setUpdateTime(LocalDateTime.now());
+            group.setStepsConfig(normalizeStepsConfig(group.getStepsConfig()));
+            return Result.success(groupService.saveOrUpdate(group));
+        } catch (IllegalArgumentException e) {
+            return Result.error(safeErrorMessage(e, "Save group failed"));
+        } catch (Exception e) {
+            return Result.error(safeErrorMessage(e, "Save group failed"));
+        }
+    }
+
+    @DeleteMapping("/groups/delete/{id}")
+    public Result<Boolean> deleteGroup(@PathVariable("id") String id) {
+        return Result.success(groupService.removeById(id));
+    }
 
     @GetMapping("/pools")
     public Result<List<HttpJimuPool>> listPools() {
@@ -64,6 +96,7 @@ public class HttpJimuController {
                 pool.setCreateTime(LocalDateTime.now());
             }
             pool.setUpdateTime(LocalDateTime.now());
+            pool.setStepsConfig(normalizeStepsConfig(pool.getStepsConfig()));
             boolean success = poolService.saveOrUpdate(pool);
             if (success && pool.getId() != null) {
                 engine.evictClientPool(pool.getId());
@@ -173,6 +206,7 @@ public class HttpJimuController {
             if (config.getCronConfig() != null) {
                 config.setCronConfig(config.getCronConfig().trim());
             }
+            config.setStepsConfig(normalizeStepsConfig(config.getStepsConfig()));
             if (config.getId() == null) {
                 config.setCreateTime(LocalDateTime.now());
             }
@@ -207,6 +241,25 @@ public class HttpJimuController {
             return Result.success(result);
         } catch (Exception e) {
             return Result.error(safeErrorMessage(e, "Test call failed"));
+        }
+    }
+
+    @GetMapping("/export")
+    public Result<HttpJimuExportBundle> exportAll() {
+        return Result.success(importExportService.exportAll());
+    }
+
+    @PostMapping("/import")
+    public Result<Boolean> importAll(@RequestBody HttpJimuExportBundle bundle) {
+        try {
+            importExportService.importAll(bundle);
+            engine.evictStepsCache();
+            httpJimuService.clearHttpIdCache();
+            return Result.success(true);
+        } catch (IllegalArgumentException e) {
+            return Result.error(safeErrorMessage(e, "Import failed"));
+        } catch (Exception e) {
+            return Result.error(safeErrorMessage(e, "Import failed"));
         }
     }
 
@@ -271,5 +324,9 @@ public class HttpJimuController {
             return fallback;
         }
         return e.getMessage();
+    }
+
+    private String normalizeStepsConfig(String stepsConfig) {
+        return (stepsConfig == null || stepsConfig.isBlank()) ? "[]" : stepsConfig;
     }
 }

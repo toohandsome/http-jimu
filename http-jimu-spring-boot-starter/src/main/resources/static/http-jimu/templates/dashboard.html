@@ -1,0 +1,68 @@
+﻿<div class="header">
+            <h2>🧩 HTTP Jimu - 接口配置</h2>
+            <div>
+                <el-button @click="importConfigs()">导入</el-button>
+                <el-button @click="exportConfigs()">导出</el-button>
+                <el-button type="warning" @click="showGroupManagement()">分组</el-button>
+                <el-button type="success" @click="showPoolManagement()">连接池</el-button>
+                <el-button type="info" @click="showStepLibrary()">积木库</el-button>
+                <el-button type="primary" @click="showEditDialog()">新接口</el-button>
+            </div>
+        </div>
+
+        <div class="workspace">
+            <div class="sidebar">
+                <div class="sidebar-title">分组树</div>
+                <el-tree
+                    :data="groupTreeData"
+                    node-key="id"
+                    default-expand-all
+                    :expand-on-click-node="false"
+                    :current-node-key="selectedGroupKey"
+                    @node-click="handleGroupNodeClick">
+                </el-tree>
+            </div>
+            <div class="content-panel">
+                <div class="toolbar">
+                    <el-input v-model="searchKeyword" placeholder="搜索接口 ID、名称、URL、分组" clearable class="search-bar">
+                        <template #prefix>
+                            <span>搜</span>
+                        </template>
+                    </el-input>
+                    <div class="toolbar-meta">当前 {{ filteredConfigs.length }} / {{ configs.length }} 个接口</div>
+                </div>
+
+                <el-table :data="filteredConfigs" style="width: 100%" class="config-card" @row-dblclick="showEditDialog">
+                    <el-table-column prop="httpId" label="接口ID" width="150"></el-table-column>
+                    <el-table-column prop="name" label="接口名称" width="200"></el-table-column>
+                    <el-table-column label="分组" width="140">
+                        <template #default="scope">
+                            {{ resolveGroupName(scope.row.groupId) }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="url" label="请求地址" show-overflow-tooltip></el-table-column>
+                    <el-table-column prop="method" label="方法" width="100"></el-table-column>
+                    <el-table-column label="定时任务" width="120">
+                        <template #default="scope">
+                            <el-tag :type="scope.row.enableJob ? 'success' : 'info'" size="small">
+                                {{ scope.row.enableJob ? '已开启' : '未开启' }}
+                            </el-tag>
+                            <div style="font-size: 10px; color: #909399; margin-top: 5px;">{{ scope.row.cronConfig || '-' }}</div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="360">
+                        <template #default="scope">
+                            <el-button size="small" @click="showEditDialog(scope.row)">编辑</el-button>
+                            <el-button size="small" type="primary" plain @click="showPublishDialog(scope.row)">发布</el-button>
+                            <el-button size="small" type="warning" @click="showScheduleDialog(scope.row)">定时</el-button>
+                            <el-button size="small" type="info" @click="showLogDialog(scope.row)">日志</el-button>
+                            <el-button size="small" type="success" @click="showTestDialog(scope.row)">测试</el-button>
+                            <el-button size="small" type="danger" @click="deleteConfig(scope.row)">删除</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </div>
+
+        
+
